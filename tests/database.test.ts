@@ -1,4 +1,4 @@
-// Skutečný PostgreSQL v PGlite: testujeme obě migrace, grants, RLS a funkce.
+// Skutečný PostgreSQL v PGlite: testujeme všechny migrace, grants, RLS a funkce.
 // Pouze auth.users a auth.uid() jsou lokální náhradou infrastruktury Supabase Auth.
 import { readFileSync } from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
@@ -39,6 +39,7 @@ describe('databázová bezpečnost', () => {
     await db.query("insert into public.profiles(id, display_name, role) values ($1, 'Správce', 'ADMIN'), ($2, 'Skladník', 'SKLADNIK')", [admin, worker]);
     await db.query("insert into public.profiles(id, display_name, role, is_active) values ($1, 'Deaktivovaný', 'SKLADNIK', false)", [inactive]);
     await db.exec(readFileSync(new URL('../supabase/migrations/202610060002_shared_access.sql', import.meta.url), 'utf8'));
+    await db.exec(readFileSync(new URL('../supabase/migrations/202610060003_optional_customer.sql', import.meta.url), 'utf8'));
   }, 60_000);
 
   beforeEach(async () => {
@@ -54,6 +55,17 @@ describe('databázová bezpečnost', () => {
     expect((await db.query<{ customer: string }>('select customer from public.orders')).rows[0].customer).toBe('Nový zákazník');
     await db.query('delete from public.orders where id = $1', [orderId]);
     expect((await db.query('select * from public.orders')).rows).toHaveLength(0);
+  });
+  it('zakázku lze vytvořit pouze s číslem a bez zákazníka', async () => {
+    const result = await db.query<{ customer: string; created_by: string }>("insert into public.orders(order_number) values ('BEZ-ZAKAZNIKA') returning customer, created_by");
+    expect(result.rows[0]).toEqual({ customer: '', created_by: admin });
+  });
+  it('zákazníka lze vymazat při úpravě existující zakázky', async () => {
+    const result = await db.query<{ customer: string }>("update public.orders set customer = '' where id = $1 returning customer", [orderId]);
+    expect(result.rows[0].customer).toBe('');
+  });
+  it('nepovinný zákazník stále respektuje limit 200 znaků', async () => {
+    await expect(db.query("insert into public.orders(order_number, customer) values ('DLOUHY-ZAKAZNIK', $1)", ['x'.repeat(201)])).rejects.toMatchObject({ code: '23514' });
   });
   it('nepřihlášený nemůže číst', async () => {
     await identity(null, 'anon');

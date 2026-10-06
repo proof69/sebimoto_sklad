@@ -42,7 +42,9 @@ describe('14denní limit', () => {
 describe('formuláře a export', () => {
   it('validuje povinná pole, délku a budoucí datum', () => {
     expect(validateOrder({ order_number: ' ', customer: 'A', note: '' }, now)).toBeTruthy();
-    expect(validateOrder({ order_number: 'A', customer: ' ', note: '' }, now)).toBeTruthy();
+    expect(validateOrder({ order_number: 'A', customer: ' ', note: '' }, now)).toBeNull();
+    expect(validateOrder({ order_number: 'A', note: '' }, now)).toBeNull();
+    expect(validateOrder({ order_number: 'A', customer: 'x'.repeat(201), note: '' }, now)).toBeTruthy();
     expect(validateOrder({ order_number: 'A', customer: 'B', note: 'x'.repeat(5001) }, now)).toBeTruthy();
     expect(validateOrder({ order_number: 'A', customer: 'B', note: '', created_at: new Date(now + 1).toISOString() }, now)).toBeTruthy();
     expect(validateOrder({ order_number: 'A', customer: 'B', note: '', created_at: 'invalid' }, now)).toBeTruthy();

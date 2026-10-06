@@ -162,6 +162,7 @@ h3, h4 { font-weight: 650; }
 .badge.overdue { color: #fff; background: #b52c32; }
 .badge-divider { opacity: .6; }
 .order-content h3 { font-size: .85rem; overflow-wrap: anywhere; }
+.order-content h3:empty, .detail-customer:empty { display: none; }
 .order-note { color: var(--muted); font-size: .77rem; line-height: 1.65; margin-top: 7px; white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .order-meta { display: flex; flex-wrap: wrap; gap: 7px 16px; margin-top: 10px; color: var(--muted); font-size: .67rem; }
 .order-meta > span { display: inline-flex; align-items: center; gap: 5px; }

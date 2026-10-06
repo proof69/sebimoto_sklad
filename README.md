@@ -6,6 +6,7 @@
 
 - Přihlášení e-mailem a heslem, zachování session po refreshi, odhlášení.
 - Každý aktivní přihlášený uživatel: vytváření, úpravy, změna stavu, mazání s potvrzením, odesílání, administrace i historie. Není třeba ručně přiřazovat roli.
+- Pro novou zakázku stačí její číslo. Zákazník i poznámka jsou nepovinní.
 - Účty mají vlastní identity pro evidenci autora a odesílatele. Nepřihlášené, deaktivované a anonymní Supabase Auth účty nemají přístup k zakázkám.
 - Priority podle skutečného `created_at`: 0–9 dní standardní, 10–13 dní upozornění, 14+ dní červeně po termínu. Odeslané zakázky se nikdy nepočítají jako opožděné.
 - Čtyři souhrnné karty, vyhledávání podle čísla/zákazníka i bez diakritiky, filtry, historie, detail a export filtrované historie do CSV.
@@ -34,7 +35,7 @@ netlify.toml            build, SPA routing a bezpečnostní hlavičky
 
 `public.profiles`: UUID z `auth.users`, zobrazované jméno a aktivita účtu. Historický sloupec `role` zůstává kompatibilní s první migrací, ale po druhé migraci už nerozlišuje oprávnění. Každý aktivní běžný Auth účet má plný přístup. Profily vznikají automaticky; klient je nemůže měnit ani sám reaktivovat deaktivovaný účet.
 
-`public.orders`: UUID, unikátní číslo zakázky (bez ohledu na velikost písmen), zákazník, poznámka, `created_at`, `updated_at`, stav `pending` / `shipped`, `shipped_at`, `created_by`, `shipped_by`. Všechny časy jsou `timestamptz`. Stáří není uložené.
+`public.orders`: UUID, povinné unikátní číslo zakázky (bez ohledu na velikost písmen), nepovinný zákazník a poznámka, `created_at`, `updated_at`, stav `pending` / `shipped`, `shipped_at`, `created_by`, `shipped_by`. Neuvedený zákazník se ukládá jako prázdný řetězec. Všechny časy jsou `timestamptz`. Stáří není uložené.
 
 `private.order_events`: audit vložení, změn a smazání s časem, uživatelem a původním/novým záznamem. Není dostupný frontendovým rolím. Zachová i předchozí odeslání po návratu do čekajících či ručním smazání.
 
@@ -53,8 +54,8 @@ Rozhraní Supabase může mírně měnit názvy položek; zásadní jsou URL pro
 ## 2. Spuštění SQL migrací
 
 1. V Supabase otevřete **SQL Editor → New query**.
-2. V novém projektu nejprve spusťte celý obsah [202610060001_initial.sql](supabase/migrations/202610060001_initial.sql) a poté [202610060002_shared_access.sql](supabase/migrations/202610060002_shared_access.sql).
-3. Pokud jste první migraci už spustili, spusťte **pouze druhou**. První je jednorázová instalace schématu. Druhá převede stávající účty na společný přístup, doplní chybějící profily a nastaví automatické vytváření profilů dalších účtů. Zakázky zachová a deaktivované účty znovu nezapne.
+2. V novém projektu postupně spusťte celý obsah [202610060001_initial.sql](supabase/migrations/202610060001_initial.sql), [202610060002_shared_access.sql](supabase/migrations/202610060002_shared_access.sql) a [202610060003_optional_customer.sql](supabase/migrations/202610060003_optional_customer.sql).
+3. V existujícím projektu spusťte **jen migrace, které ještě nebyly provedeny**. První je jednorázová instalace schématu. Druhá převede stávající účty na společný přístup, doplní chybějící profily a nastaví automatické vytváření profilů dalších účtů. Třetí umožní zakázky bez zákazníka. Zakázky i stávající zákazníci zůstávají zachovaní a deaktivované účty se znovu nezapnou.
 4. V Table Editoru ověřte tabulky `profiles`, `orders` a zapnuté RLS. Veřejné registrace ponechte vypnuté, protože každý nový běžný účet získá plný přístup. Nepovolujte data roli `anon`.
 5. Migrace přidává obě veřejné tabulky do existující publikace `supabase_realtime`. Ověřte v **Database → Publications / Replication**, že jsou zahrnuté. Pokud realtime není aktivní, aplikace přesto pracuje a obnovuje data každých 30 sekund.
 
@@ -64,7 +65,7 @@ Používáte-li Supabase CLI, lze tuto migraci také nasadit příkazem `supabas
 
 1. Otevřete **Authentication → Users → Add user → Create new user**.
 2. Zadejte skutečný e-mail a silné unikátní heslo. Zapněte potvrzení e-mailu (**Auto confirm user**), pokud účet zakládáte interně bez potvrzovacího e-mailu.
-3. Po obou migracích vznikne profil automaticky. Pokud účet existoval už před druhou migrací, doplní ho druhá migrace. Žádné SQL pro přidělení role není třeba.
+3. Po migracích vznikne profil automaticky. Pokud účet existoval už před druhou migrací, doplní ho druhá migrace. Žádné SQL pro přidělení role není třeba.
 
 Volitelné ověření profilu v SQL Editoru:
 
@@ -137,7 +138,7 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-E2E testy spouštějí vlastní Vite server na portu 4173 a používají síťové fixtures pouze v testech. Nekontaktují váš Supabase. Databázové testy spouštějí **obě skutečné SQL migrace v PostgreSQL přes PGlite**, testují grants, RLS, společný plný přístup, doplnění starých profilů, automatické profily nových účtů, deaktivaci, timestampy, audit a opakované odeslání. Supabase infrastrukturu auth nahrazují pouze minimálním `auth.users` a `auth.uid()`. Plné živé ověření Supabase Auth, WebSocketů a nasazení proveďte checklistem níže na vlastním projektu.
+E2E testy spouštějí vlastní Vite server na portu 4173 a používají síťové fixtures pouze v testech. Nekontaktují váš Supabase. Databázové testy spouštějí **všechny skutečné SQL migrace v PostgreSQL přes PGlite**, testují grants, RLS, společný plný přístup, doplnění starých profilů, automatické profily nových účtů, nepovinného zákazníka, deaktivaci, timestampy, audit a opakované odeslání. Supabase infrastrukturu auth nahrazují pouze minimálním `auth.users` a `auth.uid()`. Plné živé ověření Supabase Auth, WebSocketů a nasazení proveďte checklistem níže na vlastním projektu.
 
 ## 7. Git a GitHub
 
@@ -189,6 +190,7 @@ Bezpečnostní hlavičky dovolují připojení na standardní `*.supabase.co` p�
 
 - Nepřihlášený návštěvník na `/administrace` dostane přihlášení a žádná data.
 - Každý přihlášený uživatel se dostane do administrace a skladu, vytvoří zakázku a ověří její úpravu i mazání s potvrzením. Přímé API operace mají stejná oprávnění jako rozhraní.
+- Zakázku lze vytvořit jen s číslem; zákazníka lze později doplnit i vymazat. Číslo zakázky zůstává povinné a unikátní.
 - Nově vytvořený běžný Auth účet se přihlásí bez ručního přidělení role. Deaktivovaný ani anonymní účet nemůže měnit zakázky nebo sám reaktivovat profil. Veřejné registrace jsou vypnuté.
 - Vytvořte zpětně zakázky se stářím 9, 10, 13, 14 a 17 dní. Zkontrolujte barvy, počty a řazení. Stáří obnovuje timer i po návratu na kartu.
 - Zrušte potvrzení odeslání: nic se nezmění. Potvrďte jej: zakázka odejde z aktivních, v historii má přesný čas a skutečného odesílatele. Dvě souběžná potvrzení nepřepíšou prvního uživatele.

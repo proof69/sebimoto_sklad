@@ -25,7 +25,7 @@ export type Order = {
 
 export type OrderInput = {
   order_number: string;
-  customer: string;
+  customer?: string;
   note: string;
   created_at?: string;
   status?: OrderStatus;

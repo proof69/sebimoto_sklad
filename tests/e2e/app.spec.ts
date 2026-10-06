@@ -152,6 +152,30 @@ test('prázdný seznam a tmavý režim', async ({ page }, info) => {
   await expect(page.locator('html')).toHaveAttribute('data-theme', initial === 'dark' ? 'light' : 'dark');
 });
 
+test('zakázku lze vytvořit jen s číslem a zákazníka doplnit nebo vymazat', async ({ page }) => {
+  await fixtures(page, 'SKLADNIK');
+  await login(page);
+  await page.getByRole('button', { name: 'Nová zakázka', exact: true }).click();
+  await page.getByRole('dialog').getByLabel('Číslo zakázky', { exact: false }).fill('ZAK-BEZ-ZAKAZNIKA');
+  await expect(page.getByRole('dialog').getByLabel('Zákazník', { exact: false })).not.toHaveAttribute('required', '');
+  await page.getByRole('button', { name: 'Vytvořit zakázku', exact: true }).click();
+  await expect(page.getByText('Nová zakázka byla vytvořena.', { exact: true })).toBeVisible();
+  await page.getByRole('searchbox').fill('ZAK-BEZ-ZAKAZNIKA');
+  const card = page.locator('.order-card');
+  await expect(card).toHaveCount(1);
+  await page.getByRole('button', { name: 'Upravit zakázku ZAK-BEZ-ZAKAZNIKA', exact: true }).click();
+  await page.getByRole('dialog').getByLabel('Zákazník', { exact: false }).fill('Doplněný zákazník');
+  await page.getByRole('button', { name: 'Uložit změny', exact: true }).click();
+  await expect(card).toContainText('Doplněný zákazník');
+  await page.getByRole('button', { name: 'Upravit zakázku ZAK-BEZ-ZAKAZNIKA', exact: true }).click();
+  await page.getByRole('dialog').getByLabel('Zákazník', { exact: false }).fill('');
+  await page.getByRole('button', { name: 'Uložit změny', exact: true }).click();
+  await expect(card).not.toContainText('Doplněný zákazník');
+  await card.getByRole('button', { name: 'Označit jako odesláno', exact: true }).click();
+  await page.getByRole('button', { name: 'Ano, označit jako odesláno', exact: true }).click();
+  await expect(page.getByText('Zakázka byla označena jako odeslaná.', { exact: true })).toBeVisible();
+});
+
 test('databázová chyba má české vysvětlení a možnost opakování', async ({ page }) => {
   await fixtures(page, 'SKLADNIK', { failure: true });
   await login(page);

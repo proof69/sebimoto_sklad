@@ -56,8 +56,7 @@ export function stats(orders: Order[], now = Date.now()) {
 export function validateOrder(input: OrderInput, now = Date.now()): string | null {
   if (!input.order_number.trim()) return 'Vyplňte číslo zakázky.';
   if (input.order_number.trim().length > 80) return 'Číslo zakázky může mít nejvýše 80 znaků.';
-  if (!input.customer.trim()) return 'Vyplňte název zákazníka.';
-  if (input.customer.trim().length > 200) return 'Název zákazníka může mít nejvýše 200 znaků.';
+  if ((input.customer ?? '').trim().length > 200) return 'Název zákazníka může mít nejvýše 200 znaků.';
   if (input.note.length > 5000) return 'Poznámka může mít nejvýše 5 000 znaků.';
   if (input.created_at) {
     const date = Date.parse(input.created_at);
