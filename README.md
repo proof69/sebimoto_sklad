@@ -220,6 +220,14 @@ Originální PDF se neukládá na Supabase ani na externí službu. Do databáze
 
 ## Balení produktů do bedny
 
+### Příprava před balením
+
+Po páté migraci spusťte také [202610060006_product_preparation.sql](supabase/migrations/202610060006_product_preparation.sql). U každého produktu pak jsou dvě nezávislá počítadla **Připraveno** a **Zabaleno**, každé s tlačítky + a − a rozsahem od nuly do objednaného množství. Počty se automaticky neodvozují z údaje „Vyrobeno“ ani z druhého počítadla. Stávající zabalené počty zůstávají zachované; příprava bez uložené hodnoty začíná na nule.
+
+Přehled ukazuje samostatný součet a průběh přípravy i balení. Připravené počty se ukládají v `prepared_quantity` přes zabezpečenou atomickou funkci `prepare_product()`. Současná změna přípravy a balení nemění druhé počítadlo a nevyvolává konflikt zastaralého produktu. Skutečné změny názvu, varianty nebo množství se nadále kontrolují. Po odeslání jsou obě počítadla v rozhraní pouze ke čtení a zůstávají v historii i CSV. Při úpravě množství jej nelze snížit pod počet připravených ani zabalených kusů.
+
+Pro instalaci nového projektu spusťte všech šest migrací v číselném pořadí. V existujícím projektu s balením stačí nová šestá migrace. Frontendový deploy nenahrazuje spuštění SQL v Supabase.
+
 Po instalaci čtvrté migrace spusťte na existujícím Supabase projektu také **pátou migraci `202610060005_product_packing.sql`**. Samotný deploy frontendu databázovou funkci nevytvoří. Pátá migrace zachová všechny zakázky i produkty; starší položky bez `packed_quantity` se počítají jako nula zabalených kusů.
 
 V seznamu rozbalte **Produkty** nebo otevřete detail zakázky. Každé **+** znamená jeden kus vložený do bedny; **−** opraví omyl nebo odebrání kusu. Zobrazuje se například **2 / 5**, **Chybí 3 ks** a celkový průběh zakázky. Po zabalení všech kusů je produkt zelený s potvrzovacím symbolem. Počty se uloží do Supabase, zůstanou po refreshi a ostatní uživatelé je dostanou přes Realtime nebo záložní obnovování.

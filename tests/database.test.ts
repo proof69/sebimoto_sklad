@@ -43,6 +43,7 @@ describe('databázová bezpečnost', () => {
     await db.exec(readFileSync(new URL('../supabase/migrations/202610060003_optional_customer.sql', import.meta.url), 'utf8'));
     await db.exec(readFileSync(new URL('../supabase/migrations/202610060004_pdf_products.sql', import.meta.url), 'utf8'));
     await db.exec(readFileSync(new URL('../supabase/migrations/202610060005_product_packing.sql', import.meta.url), 'utf8'));
+    await db.exec(readFileSync(new URL('../supabase/migrations/202610060006_product_preparation.sql', import.meta.url), 'utf8'));
   }, 60_000);
 
   beforeEach(async () => {
@@ -93,6 +94,41 @@ describe('databázová bezpečnost', () => {
   async function packPiece(delta: number, index = 0, expected = packingItems[0]) {
     return db.query<{ products: { packed_quantity?: number }[] }>('select * from public.pack_product($1, $2, $3, $4::jsonb)', [orderId, index, delta, JSON.stringify(expected)]);
   }
+  async function preparePiece(delta: number, expected = packingItems[0]) {
+    return db.query<{ products: { prepared_quantity?: number; packed_quantity?: number }[] }>('select * from public.prepare_product($1, 0, $2, $3::jsonb)', [orderId, delta, JSON.stringify(expected)]);
+  }
+  it('příprava a balení jsou nezávislé a souběžné změny počtů nejsou konflikt', async () => {
+    await preparePacking();
+    expect((await preparePiece(1)).rows[0].products[0].prepared_quantity).toBe(1);
+    await packPiece(1);
+    const item = (await preparePiece(1)).rows[0].products[0];
+    expect(item).toMatchObject({ prepared_quantity: 2, packed_quantity: 1 });
+    expect((await preparePiece(-1)).rows[0].products[0]).toMatchObject({ prepared_quantity: 1, packed_quantity: 1 });
+  });
+  it('příprava odmítne změněný produkt', async () => {
+    await preparePacking();
+    await expect(preparePiece(1, { ...packingItems[0], name: 'Jiný produkt' })).rejects.toMatchObject({ code: 'P0004' });
+  });
+  it('příprava nesmí překročit množství ani klesnout pod nulu', async () => {
+    await preparePacking(); await preparePiece(1); await preparePiece(1);
+    await expect(preparePiece(1)).rejects.toMatchObject({ code: 'P0005' });
+  });
+  it('příprava odmítne odečet pod nulu', async () => {
+    await preparePacking();
+    await expect(preparePiece(-1)).rejects.toMatchObject({ code: 'P0005' });
+  });
+  it.each([-1, 3, 0.5])('databáze odmítá neplatný připravený počet %s', async prepared_quantity => {
+    await expect(db.query('update public.orders set products = $1::jsonb where id = $2', [JSON.stringify([{ ...packingItems[0], prepared_quantity }]), orderId])).rejects.toMatchObject({ code: '23514' });
+  });
+  it('příprava po odeslání zůstává zachovaná a nelze ji měnit', async () => {
+    await preparePacking(); await preparePiece(1);
+    await db.query('select * from public.ship_order($1)', [orderId]);
+    await expect(preparePiece(1)).rejects.toMatchObject({ code: 'P0003' });
+  });
+  it.each(['anon', 'inactive'])('příprava vyžaduje aktivní přihlášený účet: %s', async kind => {
+    await preparePacking(); await identity(kind === 'anon' ? null : inactive, kind === 'anon' ? 'anon' : 'authenticated');
+    await expect(preparePiece(1)).rejects.toMatchObject({ code: '42501' });
+  });
   it('přičítá kusy atomicky i se starým klientským počtem a umožní opravu mínusem', async () => {
     await preparePacking();
     expect((await packPiece(1)).rows[0].products[0].packed_quantity).toBe(1);

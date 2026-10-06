@@ -7,6 +7,11 @@ export function packingStats(products: Product[] = []) {
   const packed = products.reduce((sum, p) => sum + (p.packed_quantity ?? 0), 0);
   return { required, packed, remaining: required - packed, completed: required > 0 && packed === required };
 }
+export function preparationStats(products: Product[] = []) {
+  const required = products.reduce((sum, p) => sum + p.quantity, 0);
+  const prepared = products.reduce((sum, p) => sum + (p.prepared_quantity ?? 0), 0);
+  return { required, prepared, remaining: required - prepared, completed: required > 0 && prepared === required };
+}
 const dateFormat = new Intl.DateTimeFormat('cs-CZ', { day: 'numeric', month: 'numeric', year: 'numeric', timeZone: warehouseTimezone });
 const timestampFormat = new Intl.DateTimeFormat('cs-CZ', { day: 'numeric', month: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: warehouseTimezone });
 const dayFormat = new Intl.DateTimeFormat('en-CA', { timeZone: warehouseTimezone, year: 'numeric', month: '2-digit', day: '2-digit' });
@@ -68,6 +73,8 @@ export function validateOrder(input: OrderInput, now = Date.now()): string | nul
     if (!item.name.trim() || item.name.length > 500 || item.code.length > 80 || item.variant.length > 100) return `Zkontrolujte název, kód a variantu produktu ${index + 1}.`;
     if (!Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 1_000_000) return `Počet kusů produktu ${index + 1} musí být celé číslo od 1 do 1 000 000.`;
     if (item.produced_quantity !== null && (!Number.isInteger(item.produced_quantity) || item.produced_quantity < 0 || item.produced_quantity > 1_000_000)) return `Zkontrolujte počet vyrobených kusů produktu ${index + 1}.`;
+    const prepared = item.prepared_quantity ?? 0;
+    if (!Number.isInteger(prepared) || prepared < 0 || prepared > item.quantity) return `Produkt ${index + 1} má neplatný počet připravených kusů. Před snížením množství odeberte příslušné kusy z přípravy.`;
     const packed = item.packed_quantity ?? 0;
     if (!Number.isInteger(packed) || packed < 0 || packed > item.quantity) return `Produkt ${index + 1} má neplatný počet zabalených kusů. Před snížením množství odeberte příslušné kusy z balení.`;
   }

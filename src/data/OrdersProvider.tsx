@@ -17,7 +17,7 @@ interface OrdersState {
   update: (order: Order, input: OrderInput) => Promise<void>;
   remove: (order: Order) => Promise<void>;
   ship: (order: Order) => Promise<void>;
-  pack: (order: Order, productIndex: number, delta: 1 | -1) => Promise<void>;
+  pack: (order: Order, productIndex: number, delta: 1 | -1, stage?: 'prepared' | 'packed') => Promise<void>;
   packingBusyOrders: Set<string>;
 }
 const OrdersContext = createContext<OrdersState | null>(null);
@@ -157,14 +157,14 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     merge(data);
   }, [merge, reload]);
 
-  const pack = useCallback(async (order: Order, productIndex: number, delta: 1 | -1) => {
+  const pack = useCallback(async (order: Order, productIndex: number, delta: 1 | -1, stage: 'prepared' | 'packed' = 'packed') => {
     if (packingRequests.current.has(order.id)) return;
     const product = order.products?.[productIndex];
     if (!product) throw new Error('CONFLICT');
     packingRequests.current.add(order.id);
     setPackingBusyOrders(new Set(packingRequests.current));
     try {
-      const { data, error: dbError } = await database().rpc('pack_product', { p_order_id: order.id, p_product_index: productIndex, p_delta: delta, p_expected_product: product }).single();
+      const { data, error: dbError } = await database().rpc(stage === 'prepared' ? 'prepare_product' : 'pack_product', { p_order_id: order.id, p_product_index: productIndex, p_delta: delta, p_expected_product: product }).single();
       if (dbError) { void reload(); throw dbError; }
       merge(data);
     } finally {

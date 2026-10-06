@@ -45,16 +45,17 @@ async function fixtures(page: Page, role: Role, options: { empty?: boolean; fail
       selected.updated_at = new Date().toISOString();
       return send(request.headers().accept?.includes('object+json') ? selected : [selected]);
     }
-    if (url.pathname.endsWith('/rpc/pack_product')) {
+    if (url.pathname.endsWith('/rpc/pack_product') || url.pathname.endsWith('/rpc/prepare_product')) {
       const body = request.postDataJSON();
       const selected = rows.find(o => o.id === body.p_order_id);
       if (!selected) return send({ code: 'P0002' }, 404);
       if (selected.status !== 'pending') return send({ code: 'P0003' }, 400);
       const product = selected.products[body.p_product_index];
       if (!product) return send({ code: 'P0004' }, 400);
-      const next = (product.packed_quantity ?? 0) + body.p_delta;
+      const field = url.pathname.endsWith('/rpc/prepare_product') ? 'prepared_quantity' : 'packed_quantity';
+      const next = (product[field] ?? 0) + body.p_delta;
       if (next < 0 || next > product.quantity) return send({ code: 'P0005' }, 400);
-      product.packed_quantity = next;
+      product[field] = next;
       selected.updated_at = new Date().toISOString();
       return send(request.headers().accept?.includes('object+json') ? selected : [selected]);
     }
@@ -236,9 +237,15 @@ test('skladník balí po kusech, vidí co chybí a stav přežije refresh i odes
   await page.locator('.products-summary summary').click();
   const plus = page.getByRole('button', { name: 'Zabalit jeden kus: Testovaci produkt', exact: true });
   const minus = page.getByRole('button', { name: 'Odebrat zabalený kus: Testovaci produkt', exact: true });
+  const preparePlus = page.getByRole('button', { name: 'Připravit jeden kus: Testovaci produkt', exact: true });
+  const prepareMinus = page.getByRole('button', { name: 'Odebrat připravený kus: Testovaci produkt', exact: true });
+  await expect(prepareMinus).toBeDisabled();
+  await preparePlus.click();
+  await expect(page.locator('.prepared-cell .packing-value')).toContainText('1 / 2');
+  await expect(page.locator('.packed-cell .packing-value')).toContainText('0 / 2');
   await expect(minus).toBeDisabled();
   await plus.click();
-  await expect(page.locator('.packing-value')).toContainText('1 / 2');
+  await expect(page.locator('.packed-cell .packing-value')).toContainText('1 / 2');
   await expect(page.getByText('Zbývá zabalit 1 ks.', { exact: true })).toBeVisible();
   await page.locator('.order-card').getByRole('button', { name: 'Označit jako odesláno', exact: true }).click();
   await expect(page.getByRole('dialog')).toContainText('zbývá zabalit 1 ks');
@@ -246,13 +253,17 @@ test('skladník balí po kusech, vidí co chybí a stav přežije refresh i odes
   await page.reload();
   await page.getByRole('searchbox').fill('PDF-TEST-001');
   await page.locator('.products-summary summary').click();
-  await expect(page.locator('.packing-value')).toContainText('1 / 2');
+  await expect(page.locator('.packed-cell .packing-value')).toContainText('1 / 2');
   await plus.click();
-  await expect(page.locator('.packing-value')).toContainText('2 / 2');
+  await expect(page.locator('.prepared-cell .packing-value')).toContainText('1 / 2');
+  await preparePlus.click(); await expect(preparePlus).toBeDisabled();
+  await prepareMinus.click(); await expect(page.locator('.prepared-cell .packing-value')).toContainText('1 / 2');
+  await preparePlus.click(); await expect(page.locator('.prepared-cell .packing-value')).toContainText('2 / 2');
+  await expect(page.locator('.packed-cell .packing-value')).toContainText('2 / 2');
   await expect(plus).toBeDisabled();
   await expect(page.getByText('Všechny produkty jsou v bedně.', { exact: true })).toBeVisible();
-  await minus.click(); await expect(page.locator('.packing-value')).toContainText('1 / 2');
-  await plus.click(); await expect(page.locator('.packing-value')).toContainText('2 / 2');
+  await minus.click(); await expect(page.locator('.packed-cell .packing-value')).toContainText('1 / 2');
+  await plus.click(); await expect(page.locator('.packed-cell .packing-value')).toContainText('2 / 2');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: info.outputPath('baleni-produktu.png'), fullPage: true });
   await page.locator('.order-card').getByRole('button', { name: 'Označit jako odesláno', exact: true }).click();
@@ -260,6 +271,8 @@ test('skladník balí po kusech, vidí co chybí a stav přežije refresh i odes
   await expect(page.getByText('Zakázka byla označena jako odeslaná.', { exact: true })).toBeVisible();
   await page.getByRole('link', { name: 'Historie odeslání' }).click();
   await page.locator('.products-summary summary').click();
-  await expect(page.locator('.packing-value')).toContainText('2 / 2');
+  await expect(page.locator('.packed-cell .packing-value')).toContainText('2 / 2');
   await expect(plus).toHaveCount(0); await expect(minus).toHaveCount(0);
+  await expect(preparePlus).toHaveCount(0); await expect(prepareMinus).toHaveCount(0);
+  await expect(page.locator('.prepared-cell .packing-value')).toContainText('2 / 2');
 });

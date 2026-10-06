@@ -5,7 +5,7 @@ Projekt byl vytvořen v `C:\sklad-expedice` a lokálně ověřen 6. 10. 2026.
 - Instalace: `npm install` dokončena, lockfile je součástí projektu.
 - Runtime pro ověření: Node.js 22.23.3. Systémový Node.js 20.9 je pro současné závislosti příliš starý; použita dočasná verze z npm cache, bez změny systémové instalace.
 - `npm run build`: TypeScript a produkční Vite build úspěšné.
-- `npm test`: 64 testů prošlo. Hraniční stáří 10 a 14 dní, pořadí, souhrny, český den, validace, CSV, veřejný klíč, PDF parser, produkty a průběh balení.
+- `npm test`: 75 testů prošlo. Hraniční stáří 10 a 14 dní, pořadí, souhrny, český den, validace, CSV, veřejný klíč, PDF parser, produkty a průběh přípravy i balení.
 - Databázová část testů spouští všechny čtyři migrace ve skutečném PostgreSQL přes PGlite. Ověřuje RLS, společný přístup, automatické profily, deaktivaci, metadata, audit, opakované odeslání a nepovinného zákazníka. Čtvrtá migrace je ověřená vložením produktů a PDF metadat, zachováním produktů po odeslání a odmítnutím prázdných názvů i neplatných množství.
 - `npm run test:e2e`: 24 testů prošlo ve Chromium na desktopu, tabletu a mobilu. Přihlášení, CRUD, session, odeslání, historie, hledání, prázdné/chybové stavy, dark mode a nepovinný zákazník. PDF import používá skutečné PDF.js a syntetické PDF bez zákaznických údajů: čtení čísla, původního data a produktů, povinná kontrola, úprava položky, uložení, tabulka produktů a detail metadat. Balení ověřuje plus/minus, meze počítadla, upozornění na chybějící kusy, zachování počtů po refreshi, dokončení a historii bez ovládacích tlačítek.
 - Screenshoty přehledu desktopu a mobilu vizuálně zkontrolovány; prohlížečový test také ověřuje absenci vodorovného přetékání.
@@ -33,6 +33,8 @@ Pro produkční ukládání produktů je potřeba na Supabase spustit `202610060
 Skutečný Netlify deployment není tímto dokumentem potvrzen. README popisuje propojení GitHub repository s Netlify, nastavení prostředí, vytvoření uživatelů se společným přístupem a provozní checklist.
 
 ## Ověření balení produktů
+
+Aktuální testy spouštějí šest migrací včetně `202610060006_product_preparation.sql`. Nové testy ověřují nezávislá počítadla, střídání přípravy a balení se zastaralým klientským produktem, meze připravených kusů, databázový CHECK, zákaz operací deaktivovanému a anonymnímu účtu, změněný produkt a odeslanou zakázku. Prohlížečový scénář přípravy a balení ověřuje oba kroky, opravu mínusem, zachování připraveného počtu při balení, refresh a historii na třech velikostech obrazovky. Šestou migraci musí uživatel spustit na vzdáleném Supabase po páté migraci; vzdálená instalace agentem nebyla provedena.
 
 Databázové testy nyní spouštějí všech pět migrací. Pátá ověřuje přičítání ze serverového počtu i se zastaralým klientským počtem, odečítání, dolní a horní meze, odmítnutí změněného produktu, odeslané zakázky a anonymního/deaktivovaného účtu. Přímý zápis neplatného počtu přes API odmítá databázový CHECK. Chybějící `packed_quantity` znamená nulu, takže staré zakázky není nutné přepisovat.
 

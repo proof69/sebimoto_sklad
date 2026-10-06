@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Order } from '../src/types';
-import { DAY_MS, isToday, matchesFilter, packingStats, prioritySort, stats, urgency, validateOrder, waitingDays } from '../src/lib/orders';
+import { DAY_MS, isToday, matchesFilter, packingStats, preparationStats, prioritySort, stats, urgency, validateOrder, waitingDays } from '../src/lib/orders';
 import { csvCell, historyCsv } from '../src/lib/csv';
 import { validateConfig } from '../src/lib/config';
 
@@ -41,6 +41,12 @@ describe('14denní limit', () => {
 });
 
 describe('formuláře a export', () => {
+  it('připravené kusy se počítají samostatně a mají validované meze', () => {
+    const product = { code: 'A', name: 'Produkt', variant: '', quantity: 4, produced_quantity: null, packed_quantity: 2 };
+    expect(preparationStats([product])).toEqual({ prepared: 0, required: 4, remaining: 4, completed: false });
+    expect(preparationStats([{ ...product, prepared_quantity: 4 }]).completed).toBe(true);
+    expect(validateOrder({ order_number: 'A', note: '', products: [{ ...product, prepared_quantity: 5 }] })).toBeTruthy();
+  });
   it('balení starších produktů začíná na nule a počítá chybějící kusy', () => {
     const product = { code: 'A', name: 'Produkt', variant: '', quantity: 4, produced_quantity: null };
     expect(packingStats([product])).toEqual({ packed: 0, required: 4, remaining: 4, completed: false });
