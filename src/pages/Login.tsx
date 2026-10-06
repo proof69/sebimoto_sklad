@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { ArrowRight, Eye, EyeOff, LockKeyhole, Package, ShieldCheck } from 'lucide-react';
+import { ArrowRight, Eye, EyeOff, LockKeyhole, ShieldCheck } from 'lucide-react';
+import { Brand } from '../components/Brand';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
 import { database } from '../lib/supabase';
@@ -36,7 +37,7 @@ export function LoginView({ onSubmit, busy = false, error = null }: { onSubmit?:
 
   return <main className="login-page">
     <section className="login-story">
-      <div className="brand"><span className="brand-mark"><Package size={26} /></span><span className="brand-name"><span className="brand-company">Sebimoto</span><span>expedice<span className="brand-dot">.</span></span></span></div>
+      <div className="brand"><Brand /></div>
       <div className="login-story-content"><span className="eyebrow">PŘEHLED V KAŽDÉM KROKU</span><h1>Každá zakázka.<br />Včas na cestě.</h1><p>Jedno místo pro váš sklad. Jasné priority, přehledné zakázky a expedice pod kontrolou.</p><div className="story-grid"><div><span>01</span><strong>Zadejte zakázku</strong></div><div><span>02</span><strong>Sledujte termín</strong></div><div><span>03</span><strong>Potvrďte odeslání</strong></div></div></div>
       <p className="login-story-footer"><ShieldCheck size={18} />Interní pracovní systém</p>
     </section>

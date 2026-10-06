@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Archive, ArrowUpRight, Check, LayoutDashboard, LogOut, Moon, Package, RefreshCw, Settings2, Sun, Wifi, WifiOff } from 'lucide-react';
+import { Archive, ArrowUpRight, Check, LayoutDashboard, LogOut, Moon, RefreshCw, Settings2, Sun, Wifi, WifiOff } from 'lucide-react';
+import { Brand } from './Brand';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
 import { useOrders } from '../data/OrdersProvider';
@@ -30,7 +31,7 @@ export function Layout() {
   return <div className="app-layout">
     <a className="skip-link" href="#main">Přeskočit na obsah</a>
     <aside className="sidebar">
-      <NavLink to="/administrace" className="brand"><span className="brand-mark"><Package size={25} /></span><span className="brand-name"><span className="brand-company">Sebimoto</span><span>expedice<span className="brand-dot">.</span></span></span></NavLink>
+      <NavLink to="/administrace" className="brand"><Brand /></NavLink>
       <div className="workspace-tag"><span className="status-dot" />SKLADOVÝ SYSTÉM</div>
       <nav aria-label="Hlavní navigace" className="main-nav">
         <NavLink to="/sklad"><LayoutDashboard size={21} /><span>Přehled skladu</span><span className="nav-count">{counts.pending}</span></NavLink>

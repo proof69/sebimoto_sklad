@@ -72,10 +72,9 @@ h3, h4 { font-weight: 650; }
 .icon-button:hover:not(:disabled) { background: var(--surface-soft); color: var(--text); }
 .text-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; color: var(--green); font-size: .8rem; font-weight: 650; background: transparent; border: 0; padding: 10px 0; min-height: 44px; }
 .text-button:hover:not(:disabled) { text-decoration: underline; }
-.brand { display: flex; align-items: center; gap: 10px; font-weight: 750; letter-spacing: -.8px; font-size: 1.7rem; white-space: nowrap; }
-.brand-mark { width: 42px; height: 42px; flex-shrink: 0; background: #166b52; color: #fff; border-radius: 12px; display: grid; place-items: center; }
-.brand-name { display: flex; flex-direction: column; gap: 2px; line-height: 1.05; }
-.brand-company { font-size: .7rem; font-weight: 650; letter-spacing: 1.1px; }
+.brand { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; width: 200px; max-width: 100%; }
+.brand-logo { display: block; width: 100%; height: auto; padding: 7px; border-radius: 7px; background: #fff; object-fit: contain; }
+.brand-caption { font-size: .85rem; font-weight: 700; letter-spacing: .5px; color: var(--green); }
 .brand-dot { color: var(--green); }
 .app-layout { display: flex; min-height: 100vh; }
 .sidebar { width: 244px; flex-shrink: 0; position: fixed; inset: 0 auto 0 0; background: var(--surface); border-right: 1px solid var(--border); padding: 32px 20px 16px; display: flex; flex-direction: column; z-index: 10; }
@@ -257,7 +256,8 @@ h3, h4 { font-weight: 650; }
 .skip-link:focus { top: 8px; }
 .login-page { display: grid; grid-template-columns: 1fr 1fr; min-height: 100dvh; }
 .login-story { padding: 45px 60px; background: #173d30; color: #edf5ef; display: flex; flex-direction: column; }
-.login-story .brand-mark { background: #326b51; }
+.login-story > .brand { width: 320px; }
+.login-story .brand-caption { color: #d3e9db; }
 .login-story .brand-dot { color: #b1d8be; }
 .login-story-content { margin: auto 0; padding: 70px 0; max-width: 500px; }
 .login-story .eyebrow { color: #bdd3c6; font-size: .64rem; letter-spacing: 2px; }
@@ -295,7 +295,6 @@ h3, h4 { font-weight: 650; }
 @media (max-width: 1000px) {
   .sidebar { position: static; width: 100%; padding: 16px 22px 0; border-right: 0; border-bottom: 1px solid var(--border); display: grid; grid-template-columns: 1fr auto; }
   .sidebar > .brand { padding: 0; font-size: 1.5rem; }
-  .brand-mark { width: 36px; height: 36px; border-radius: 9px; }
   .workspace-tag, .sidebar-note, .theme-button { display: none; }
   .sidebar-bottom { border: 0; padding: 0; grid-column: 2; grid-row: 1; }
   .user-profile { margin: 0; }
