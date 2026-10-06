@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+*.local
+*.tsbuildinfo
+.tools/
+.local-setup/
+coverage/
+playwright-report/
+test-results/
+.netlify/
+.DS_Store
+Thumbs.db

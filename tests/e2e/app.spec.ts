@@ -1,0 +1,161 @@
+// Síťové fixtures jsou výhradně v testech. Produkce používá pouze Supabase.
+// Bezpečnost RLS se ověřuje odděleně proti PostgreSQL v database.test.ts.
+import { expect, test, type Page } from '@playwright/test';
+import type { Order, Profile, Role } from '../../src/types';
+import { DAY_MS } from '../../src/lib/orders';
+
+const adminId = '00000000-0000-0000-0000-000000000001';
+const workerId = '00000000-0000-0000-0000-000000000002';
+
+async function fixtures(page: Page, role: Role, options: { empty?: boolean; failure?: boolean } = {}) {
+  const id = role === 'ADMIN' ? adminId : workerId;
+  const people: Profile[] = [
+    { id: adminId, display_name: 'Eva Správcová', role: 'ADMIN', is_active: true },
+    { id: workerId, display_name: 'Jan Skladník', role: 'SKLADNIK', is_active: true },
+  ];
+  let rows: Order[] = options.empty ? [] : [17, 11, 2].map((days, index) => ({
+    id: `00000000-0000-0000-0000-${String(100 + index).padStart(12, '0')}`,
+    order_number: `ZAK-${index + 1}`, customer: ['Moravské dílny', 'Ateliér Praha', 'Studio Brno'][index],
+    note: index === 0 ? 'Pečlivě zabalit. Křehké zboží.' : '', created_at: new Date(Date.now() - days * DAY_MS).toISOString(),
+    updated_at: new Date(Date.now()).toISOString(), status: 'pending', shipped_at: null, created_by: adminId, shipped_by: null,
+  }));
+  const token = `${btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))}.${btoa(JSON.stringify({ sub: id, role: 'authenticated', exp: Math.floor(Date.now() / 1000) + 3600, aud: 'authenticated' }))}.test-signature`;
+  const user = { id, email: 'uzivatel@example.cz', aud: 'authenticated', role: 'authenticated', app_metadata: { provider: 'email' }, user_metadata: {}, created_at: new Date().toISOString() };
+  await page.routeWebSocket('ws://127.0.0.1:54321/**', socket => { socket.close(); });
+  await page.route('http://127.0.0.1:54321/**', async route => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const send = (body: unknown, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+    if (url.pathname.endsWith('/token')) return send({ access_token: token, refresh_token: 'test-refresh', token_type: 'bearer', expires_in: 3600, user });
+    if (url.pathname.endsWith('/user')) return send(user);
+    if (url.pathname.endsWith('/logout')) return send({});
+    if (url.pathname.endsWith('/profiles')) {
+      const selected = url.searchParams.get('id')?.replace('eq.', '');
+      const data = selected ? people.filter(p => p.id === selected) : people;
+      return send(request.headers().accept?.includes('object+json') ? data[0] : data);
+    }
+    if (url.pathname.endsWith('/rpc/ship_order')) {
+      const selected = rows.find(o => o.id === request.postDataJSON().p_order_id);
+      if (!selected) return send({ code: 'P0002', message: 'Order not found' }, 404);
+      selected.status = 'shipped';
+      selected.shipped_at = new Date().toISOString();
+      selected.shipped_by = id;
+      selected.updated_at = new Date().toISOString();
+      return send(request.headers().accept?.includes('object+json') ? selected : [selected]);
+    }
+    if (url.pathname.endsWith('/orders')) {
+      if (options.failure) return send({ code: '42501', message: 'denied' }, 403);
+      if (request.method() === 'POST') {
+        const payload = request.postDataJSON();
+        const created: Order = { ...payload, id: '00000000-0000-0000-0000-000000000999', created_at: payload.created_at ?? new Date().toISOString(), updated_at: new Date().toISOString(), status: 'pending', created_by: id, shipped_by: null, shipped_at: null };
+        rows.push(created);
+        return send(request.headers().accept?.includes('object+json') ? created : [created], 201);
+      }
+      const selectedId = url.searchParams.get('id')?.replace('eq.', '');
+      if (request.method() === 'DELETE') {
+        const removed = rows.filter(o => o.id === selectedId);
+        rows = rows.filter(o => o.id !== selectedId);
+        return send(removed.map(o => ({ id: o.id })));
+      }
+      if (request.method() === 'PATCH') {
+        const selected = rows.find(o => o.id === selectedId);
+        if (selected) Object.assign(selected, request.postDataJSON(), { updated_at: new Date().toISOString() });
+        return send(request.headers().accept?.includes('object+json') ? selected : [selected]);
+      }
+      return send(rows);
+    }
+    return send({});
+  });
+}
+
+async function login(page: Page) {
+  await page.goto('/prihlaseni');
+  await page.getByLabel('E-mail', { exact: true }).fill('uzivatel@example.cz');
+  await page.getByLabel('Heslo', { exact: true }).fill('bezpecne-testovaci-heslo');
+  await page.getByRole('button', { name: 'Přihlásit se', exact: true }).click();
+}
+
+test('nepřihlášený nevidí zakázky ani při otevření vnitřní URL', async ({ page }) => {
+  await fixtures(page, 'SKLADNIK');
+  await page.goto('/administrace');
+  await expect(page).toHaveURL(/prihlaseni/);
+  await expect(page.getByRole('button', { name: 'Přihlásit se', exact: true })).toBeVisible();
+  await expect(page.getByText('Moravské dílny')).toHaveCount(0);
+});
+
+test('každý přihlášený vidí administraci, priority a může odesílat', async ({ page }, info) => {
+  await fixtures(page, 'SKLADNIK');
+  await login(page);
+  await expect(page).toHaveURL(/administrace/);
+  const cards = page.locator('.order-card');
+  await expect(cards).toHaveCount(3);
+  await expect(cards.first()).toContainText('ZAK-1');
+  await expect(cards.first()).toContainText('PO TERMÍNU');
+  await expect(page.getByRole('link', { name: 'Administrace', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Nová zakázka' })).toBeVisible();
+  await expect(page.locator('body')).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: info.outputPath('prehled-skladu.png'), fullPage: true });
+  await cards.first().getByRole('button', { name: 'Označit jako odesláno' }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.getByRole('button', { name: 'Zrušit', exact: true }).click();
+  await expect(cards).toHaveCount(3);
+  await cards.first().getByRole('button', { name: 'Označit jako odesláno' }).click();
+  await page.getByRole('button', { name: 'Ano, označit jako odesláno', exact: true }).click();
+  await expect(page.getByText('Zakázka byla označena jako odeslaná.', { exact: true })).toBeVisible();
+  await expect(cards).toHaveCount(2);
+  await page.getByRole('link', { name: 'Historie odeslání' }).click();
+  await expect(cards).toHaveCount(1);
+  await expect(cards.first()).toContainText('Jan Skladník');
+  await expect(cards.first()).not.toContainText('PO TERMÍNU');
+  await page.reload();
+  await expect(cards).toHaveCount(1);
+  await expect(page).toHaveURL(/historie/);
+  await page.goto('/administrace');
+  await expect(page).toHaveURL(/administrace/);
+  await page.getByRole('button', { name: 'Odhlásit se', exact: true }).click();
+  await expect(page).toHaveURL(/prihlaseni/);
+});
+
+test('také skladník vytváří, hledá, upravuje a maže s potvrzením', async ({ page }) => {
+  await fixtures(page, 'SKLADNIK');
+  await login(page);
+  await expect(page).toHaveURL(/administrace/);
+  await page.getByRole('button', { name: 'Nová zakázka', exact: true }).click();
+  await page.getByRole('dialog').getByLabel('Číslo zakázky', { exact: false }).fill('ZAK-NOVA');
+  await page.getByRole('dialog').getByLabel('Zákazník', { exact: false }).fill('Nový zákazník');
+  await page.getByRole('dialog').getByLabel('Poznámka', { exact: false }).fill('Pokyny k balení');
+  await page.getByRole('button', { name: 'Vytvořit zakázku', exact: true }).click();
+  await expect(page.getByText('Nová zakázka byla vytvořena.', { exact: true })).toBeVisible();
+  await page.getByRole('searchbox').fill('novy');
+  await expect(page.locator('.order-card')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Upravit zakázku ZAK-NOVA', exact: true }).click();
+  await page.getByRole('dialog').getByLabel('Zákazník', { exact: false }).fill('Nový zákazník upravený');
+  await page.getByRole('button', { name: 'Uložit změny', exact: true }).click();
+  await expect(page.locator('.order-card')).toContainText('Nový zákazník upravený');
+  await page.getByRole('button', { name: 'Odstranit zakázku ZAK-NOVA', exact: true }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.getByRole('button', { name: 'Zrušit', exact: true }).click();
+  await expect(page.locator('.order-card')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Odstranit zakázku ZAK-NOVA', exact: true }).click();
+  await page.getByRole('button', { name: 'Odstranit zakázku', exact: true }).click();
+  await expect(page.getByText('Žádné zakázky k zobrazení', { exact: true })).toBeVisible();
+});
+
+test('prázdný seznam a tmavý režim', async ({ page }, info) => {
+  await fixtures(page, 'SKLADNIK', { empty: true });
+  await login(page);
+  await expect(page.getByText('Žádné zakázky k zobrazení', { exact: true })).toBeVisible();
+  const themeButton = info.project.name === 'desktop' ? page.getByRole('button', { name: /Tmavý režim|Světlý režim/ }) : page.getByRole('button', { name: /Zapnout tmavý režim|Zapnout světlý režim/ });
+  const initial = await page.locator('html').getAttribute('data-theme');
+  await themeButton.click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', initial === 'dark' ? 'light' : 'dark');
+});
+
+test('databázová chyba má české vysvětlení a možnost opakování', async ({ page }) => {
+  await fixtures(page, 'SKLADNIK', { failure: true });
+  await login(page);
+  await expect(page.getByText('Něco se nepodařilo', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Zkusit znovu', exact: true })).toBeVisible();
+  await expect(page.getByText('K této akci nemáte oprávnění.', { exact: false })).toBeVisible();
+});
