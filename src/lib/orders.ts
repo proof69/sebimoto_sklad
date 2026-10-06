@@ -58,6 +58,17 @@ export function validateOrder(input: OrderInput, now = Date.now()): string | nul
   if (input.order_number.trim().length > 80) return 'Číslo zakázky může mít nejvýše 80 znaků.';
   if ((input.customer ?? '').trim().length > 200) return 'Název zákazníka může mít nejvýše 200 znaků.';
   if (input.note.length > 5000) return 'Poznámka může mít nejvýše 5 000 znaků.';
+  if ((input.products?.length ?? 0) > 200) return 'Zakázka může mít nejvýše 200 produktů.';
+  for (const [index, item] of (input.products ?? []).entries()) {
+    if (!item.name.trim() || item.name.length > 500 || item.code.length > 80 || item.variant.length > 100) return `Zkontrolujte název, kód a variantu produktu ${index + 1}.`;
+    if (!Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 1_000_000) return `Počet kusů produktu ${index + 1} musí být celé číslo od 1 do 1 000 000.`;
+    if (item.produced_quantity !== null && (!Number.isInteger(item.produced_quantity) || item.produced_quantity < 0 || item.produced_quantity > 1_000_000)) return `Zkontrolujte počet vyrobených kusů produktu ${index + 1}.`;
+  }
+  if ((input.source_order_number?.length ?? 0) > 80 || (input.customer_code?.length ?? 0) > 80 || (input.source_file_name?.length ?? 0) > 255) return 'Údaje z PDF jsou příliš dlouhé. Zkraťte číslo objednávky, kód zákazníka nebo název souboru.';
+  if (input.requested_ship_date) {
+    const value = input.requested_ship_date;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(Date.parse(value)) || new Date(value).toISOString().slice(0, 10) !== value) return 'Zadejte platný termín z PDF.';
+  }
   if (input.created_at) {
     const date = Date.parse(input.created_at);
     if (!Number.isFinite(date)) return 'Zadejte platné datum vytvoření.';

@@ -1,10 +1,11 @@
 import { lazy, Suspense, useMemo, useState } from 'react';
-import { AlertTriangle, Download, Plus, Search, SlidersHorizontal } from 'lucide-react';
+import { AlertTriangle, Download, FileUp, Plus, Search, SlidersHorizontal } from 'lucide-react';
 import { useOrders } from '../data/OrdersProvider';
 import { useNow } from '../hooks/useNow';
 import { isToday, matchesFilter, ordersLabel, prioritySort, stats } from '../lib/orders';
 import { errorMessage } from '../lib/errors';
 import { downloadHistory } from '../lib/csv';
+import type { PdfDraft } from '../lib/pdf-parser';
 import type { Order, OrderFilter } from '../types';
 import { OrderList } from '../components/OrderList';
 import { ConfirmDialog } from '../components/Modal';
@@ -17,6 +18,7 @@ const filters: { id: OrderFilter; label: string }[] = [
 ];
 const normalized = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('cs-CZ');
 const OrderForm = lazy(() => import('../components/OrderForm').then(module => ({ default: module.OrderForm })));
+const PdfImport = lazy(() => import('../components/PdfImport').then(module => ({ default: module.PdfImport })));
 const OrderDetail = lazy(() => import('../components/OrderDetail').then(module => ({ default: module.OrderDetail })));
 
 export function OrdersPage({ mode }: { mode: 'warehouse' | 'admin' | 'history' }) {
@@ -26,7 +28,8 @@ export function OrdersPage({ mode }: { mode: 'warehouse' | 'admin' | 'history' }
   const [filter, setFilter] = useState<OrderFilter>(mode === 'history' ? 'shipped' : 'pending');
   const [query, setQuery] = useState('');
   const [todayOnly, setTodayOnly] = useState(false);
-  const [form, setForm] = useState<{ order: Order | null } | null>(null);
+  const [form, setForm] = useState<{ order: Order | null; draft?: PdfDraft } | null>(null);
+  const [pdfImport, setPdfImport] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [action, setAction] = useState<{ type: 'ship' | 'delete'; order: Order } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -63,7 +66,7 @@ export function OrdersPage({ mode }: { mode: 'warehouse' | 'admin' | 'history' }
   }
 
   return <>
-    <div className="page-heading"><div><span className="eyebrow">{history ? 'DOKONČENÉ ZAKÁZKY' : admin ? 'SPRÁVA ZAKÁZEK' : 'KAŽDÝ DEN POD KONTROLOU'}</span><h1>{history ? 'Historie odeslání' : admin ? 'Administrace' : 'Přehled skladu'}</h1><p className="muted">{history ? 'Přehled odeslaných zakázek, časů a lidí, kteří je vyřídili.' : admin ? 'Vytvářejte zakázky a mějte celou expedici na jednom místě.' : 'Nejdříve vyřiďte nejstarší zakázky. Každé odeslání potvrďte.'}</p></div>{!history && <button className="button primary" onClick={() => setForm({ order: null })}><Plus size={20} />Nová zakázka</button>}{history && <button className="button secondary" disabled={loading || Boolean(error) || !visibleOrders.length} onClick={() => { downloadHistory(visibleOrders, profiles); notify('Historie zakázek byla exportována do CSV.'); }}><Download size={19} />Exportovat CSV</button>}</div>
+    <div className="page-heading"><div><span className="eyebrow">{history ? 'DOKONČENÉ ZAKÁZKY' : admin ? 'SPRÁVA ZAKÁZEK' : 'KAŽDÝ DEN POD KONTROLOU'}</span><h1>{history ? 'Historie odeslání' : admin ? 'Administrace' : 'Přehled skladu'}</h1><p className="muted">{history ? 'Přehled odeslaných zakázek, časů a lidí, kteří je vyřídili.' : admin ? 'Vytvářejte zakázky a mějte celou expedici na jednom místě.' : 'Nejdříve vyřiďte nejstarší zakázky. Každé odeslání potvrďte.'}</p></div>{!history && <div className="heading-actions"><button className="button secondary" onClick={() => setPdfImport(true)}><FileUp size={19} />Importovat PDF</button><button className="button primary" onClick={() => setForm({ order: null })}><Plus size={20} />Nová zakázka</button></div>}{history && <button className="button secondary" disabled={loading || Boolean(error) || !visibleOrders.length} onClick={() => { downloadHistory(visibleOrders, profiles); notify('Historie zakázek byla exportována do CSV.'); }}><Download size={19} />Exportovat CSV</button>}</div>
     {!history && !loading && <StatsCards orders={orders} now={now} onFilter={cardFilter} />}
     {!history && !loading && counts.overdue > 0 && <div className="overdue-banner" role="status"><div className="overdue-banner-icon"><AlertTriangle size={24} /></div><div><strong>{ordersLabel(counts.overdue)} po termínu. Nutné odeslat.</strong><p>{counts.overdue === 1 ? 'Čeká nejméně 14 dní. Vyřiďte ji přednostně.' : 'Čekají nejméně 14 dní. Vyřiďte je přednostně.'}</p></div><button className="text-button" onClick={() => selectFilter('overdue')}>Zobrazit zakázky<span aria-hidden="true">→</span></button></div>}
     <section className="orders-section" aria-label={history ? 'Seznam odeslaných zakázek' : 'Seznam zakázek'}>
@@ -74,7 +77,8 @@ export function OrdersPage({ mode }: { mode: 'warehouse' | 'admin' | 'history' }
     </section>
     {!history && <p className="priority-legend"><span><i className="legend-dot normal" />0–9 dní · standardní</span><span><i className="legend-dot warning" />10–13 dní · blíží se termín</span><span><i className="legend-dot overdue" />14+ dní · po termínu</span></p>}
     <Suspense fallback={<div className="dialog-loading" role="status">Načítání dialogu…</div>}>
-      {form && <OrderForm order={form.order} onClose={() => setForm(null)} />}
+      {form && <OrderForm order={form.order} draft={form.draft} onClose={() => setForm(null)} />}
+      {pdfImport && <PdfImport onClose={() => setPdfImport(false)} onImported={draft => { setPdfImport(false); setForm({ order: null, draft }); }} />}
       {detail && <OrderDetail order={detail} now={now} onClose={() => setDetailId(null)} />}
     </Suspense>
     {detailId && !detail && !loading && <ConfirmDialog title="Zakázka už není v seznamu" confirmLabel="Zavřít" busy={false} onClose={() => setDetailId(null)} onConfirm={() => setDetailId(null)}><p>Zakázka byla mezitím odstraněna nebo se změnila vaše oprávnění.</p></ConfirmDialog>}

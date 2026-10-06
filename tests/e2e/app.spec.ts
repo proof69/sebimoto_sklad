@@ -3,6 +3,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import type { Order, Profile, Role } from '../../src/types';
 import { DAY_MS } from '../../src/lib/orders';
+import { samplePdf } from './pdf-fixture';
 
 const adminId = '00000000-0000-0000-0000-000000000001';
 const workerId = '00000000-0000-0000-0000-000000000002';
@@ -18,6 +19,7 @@ async function fixtures(page: Page, role: Role, options: { empty?: boolean; fail
     order_number: `ZAK-${index + 1}`, customer: ['Moravské dílny', 'Ateliér Praha', 'Studio Brno'][index],
     note: index === 0 ? 'Pečlivě zabalit. Křehké zboží.' : '', created_at: new Date(Date.now() - days * DAY_MS).toISOString(),
     updated_at: new Date(Date.now()).toISOString(), status: 'pending', shipped_at: null, created_by: adminId, shipped_by: null,
+    products: [], source_order_number: '', customer_code: '', requested_ship_date: null, source_file_name: '',
   }));
   const token = `${btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))}.${btoa(JSON.stringify({ sub: id, role: 'authenticated', exp: Math.floor(Date.now() / 1000) + 3600, aud: 'authenticated' }))}.test-signature`;
   const user = { id, email: 'uzivatel@example.cz', aud: 'authenticated', role: 'authenticated', app_metadata: { provider: 'email' }, user_metadata: {}, created_at: new Date().toISOString() };
@@ -123,14 +125,14 @@ test('také skladník vytváří, hledá, upravuje a maže s potvrzením', async
   await expect(page).toHaveURL(/administrace/);
   await page.getByRole('button', { name: 'Nová zakázka', exact: true }).click();
   await page.getByRole('dialog').getByLabel('Číslo zakázky', { exact: false }).fill('ZAK-NOVA');
-  await page.getByRole('dialog').getByLabel('Zákazník', { exact: false }).fill('Nový zákazník');
+  await page.getByRole('dialog').getByLabel(/^Zákazník\b/).fill('Nový zákazník');
   await page.getByRole('dialog').getByLabel('Poznámka', { exact: false }).fill('Pokyny k balení');
   await page.getByRole('button', { name: 'Vytvořit zakázku', exact: true }).click();
   await expect(page.getByText('Nová zakázka byla vytvořena.', { exact: true })).toBeVisible();
   await page.getByRole('searchbox').fill('novy');
   await expect(page.locator('.order-card')).toHaveCount(1);
   await page.getByRole('button', { name: 'Upravit zakázku ZAK-NOVA', exact: true }).click();
-  await page.getByRole('dialog').getByLabel('Zákazník', { exact: false }).fill('Nový zákazník upravený');
+  await page.getByRole('dialog').getByLabel(/^Zákazník\b/).fill('Nový zákazník upravený');
   await page.getByRole('button', { name: 'Uložit změny', exact: true }).click();
   await expect(page.locator('.order-card')).toContainText('Nový zákazník upravený');
   await page.getByRole('button', { name: 'Odstranit zakázku ZAK-NOVA', exact: true }).click();
@@ -157,18 +159,18 @@ test('zakázku lze vytvořit jen s číslem a zákazníka doplnit nebo vymazat',
   await login(page);
   await page.getByRole('button', { name: 'Nová zakázka', exact: true }).click();
   await page.getByRole('dialog').getByLabel('Číslo zakázky', { exact: false }).fill('ZAK-BEZ-ZAKAZNIKA');
-  await expect(page.getByRole('dialog').getByLabel('Zákazník', { exact: false })).not.toHaveAttribute('required', '');
+  await expect(page.getByRole('dialog').getByLabel(/^Zákazník\b/)).not.toHaveAttribute('required', '');
   await page.getByRole('button', { name: 'Vytvořit zakázku', exact: true }).click();
   await expect(page.getByText('Nová zakázka byla vytvořena.', { exact: true })).toBeVisible();
   await page.getByRole('searchbox').fill('ZAK-BEZ-ZAKAZNIKA');
   const card = page.locator('.order-card');
   await expect(card).toHaveCount(1);
   await page.getByRole('button', { name: 'Upravit zakázku ZAK-BEZ-ZAKAZNIKA', exact: true }).click();
-  await page.getByRole('dialog').getByLabel('Zákazník', { exact: false }).fill('Doplněný zákazník');
+  await page.getByRole('dialog').getByLabel(/^Zákazník\b/).fill('Doplněný zákazník');
   await page.getByRole('button', { name: 'Uložit změny', exact: true }).click();
   await expect(card).toContainText('Doplněný zákazník');
   await page.getByRole('button', { name: 'Upravit zakázku ZAK-BEZ-ZAKAZNIKA', exact: true }).click();
-  await page.getByRole('dialog').getByLabel('Zákazník', { exact: false }).fill('');
+  await page.getByRole('dialog').getByLabel(/^Zákazník\b/).fill('');
   await page.getByRole('button', { name: 'Uložit změny', exact: true }).click();
   await expect(card).not.toContainText('Doplněný zákazník');
   await card.getByRole('button', { name: 'Označit jako odesláno', exact: true }).click();
@@ -182,4 +184,30 @@ test('databázová chyba má české vysvětlení a možnost opakování', async
   await expect(page.getByText('Něco se nepodařilo', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Zkusit znovu', exact: true })).toBeVisible();
   await expect(page.getByText('K této akci nemáte oprávnění.', { exact: false })).toBeVisible();
+});
+
+test('PDF import vyžaduje kontrolu a uloží produkty, čísla i původní datum', async ({ page }, info) => {
+  await fixtures(page, 'SKLADNIK');
+  await login(page);
+  await page.getByRole('button', { name: 'Importovat PDF', exact: true }).click();
+  await page.getByLabel('Vybrat PDF zakázky', { exact: true }).setInputFiles({ name: 'synthetic.pdf', mimeType: 'application/pdf', buffer: samplePdf() });
+  await expect(page.getByRole('dialog', { name: 'Zkontrolovat import z PDF' })).toBeVisible();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByLabel('Číslo zakázky', { exact: false })).toHaveValue('PDF-TEST-001');
+  await expect(dialog.getByLabel('Číslo objednávky', { exact: true })).toHaveValue('OBJ-001');
+  await expect(dialog.getByLabel('Kód zákazníka', { exact: true })).toHaveValue('CUST-001');
+  await expect(dialog.getByLabel('Název produktu', { exact: true })).toHaveValue('Testovaci produkt');
+  await expect(dialog.getByLabel('Počet kusů', { exact: true })).toHaveValue('2');
+  await dialog.getByLabel('Název produktu', { exact: true }).fill('Opravený produkt');
+  await page.getByRole('button', { name: 'Vytvořit zakázku', exact: true }).click();
+  await expect(page.getByText('Nová zakázka byla vytvořena.', { exact: true })).toBeVisible();
+  await page.getByRole('searchbox').fill('PDF-TEST-001');
+  await page.locator('.products-summary summary').click();
+  await expect(page.locator('.products-table')).toContainText('Opravený produkt');
+  await expect(page.locator('.order-card')).toContainText('5. 10. 2026');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: info.outputPath('importovane-produkty.png'), fullPage: true });
+  await page.getByRole('button', { name: /PDF-TEST-001/ }).first().click();
+  await expect(page.getByRole('dialog')).toContainText('Produkty (1)');
+  await expect(page.getByRole('dialog')).toContainText('OBJ-001');
 });

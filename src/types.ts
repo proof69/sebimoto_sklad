@@ -3,6 +3,14 @@ export type Role = 'ADMIN' | 'SKLADNIK';
 export type OrderStatus = 'pending' | 'shipped';
 export type OrderFilter = 'all' | 'pending' | 'warning' | 'overdue' | 'shipped';
 
+export type Product = {
+  code: string;
+  name: string;
+  variant: string;
+  quantity: number;
+  produced_quantity: number | null;
+};
+
 export type Profile = {
   id: string;
   display_name: string;
@@ -21,6 +29,11 @@ export type Order = {
   shipped_at: string | null;
   created_by: string;
   shipped_by: string | null;
+  products: Product[];
+  source_order_number: string;
+  customer_code: string;
+  requested_ship_date: string | null;
+  source_file_name: string;
 };
 
 export type OrderInput = {
@@ -29,6 +42,11 @@ export type OrderInput = {
   note: string;
   created_at?: string;
   status?: OrderStatus;
+  products?: Product[];
+  source_order_number?: string;
+  customer_code?: string;
+  requested_ship_date?: string | null;
+  source_file_name?: string;
 };
 
 // Tvar kompatibilní s generikem SupabaseClient. SQL migrace je zdrojem schématu.

@@ -3,6 +3,7 @@ import { ArrowRight, Check, Clock3, MoreHorizontal, Pencil, Trash2 } from 'lucid
 import type { Order } from '../types';
 import { daysLabel, deliveryDuration, formatDate, formatTimestamp, ordersLabel, urgency, waitingDays } from '../lib/orders';
 import { useOrders } from '../data/OrdersProvider';
+import { ProductsSummary } from './Products';
 import { EmptyState } from './States';
 
 export function UrgencyBadge({ order, now }: { order: Order; now: number }) {
@@ -28,6 +29,7 @@ export function OrderList({ orders, now, admin = false, onShip, onEdit, onDelete
           <div className="order-indicator" aria-hidden="true">{order.status === 'shipped' ? <Check size={22} /> : <PackageGlyph />}</div>
           <div className="order-content"><div className="order-topline"><button className="order-number" onClick={() => onDetail(order)}>{order.order_number}<ArrowRight size={15} /></button><UrgencyBadge order={order} now={now} /></div><h3>{order.customer}</h3>{order.note && <p className="order-note">{order.note}</p>}<div className="order-meta"><span><Clock3 size={14} />Přidáno {formatDate(order.created_at)}</span>{order.status === 'shipped' ? <><span>Odesláno {formatTimestamp(order.shipped_at!)}</span><span>Za {deliveryDuration(order)}</span><span>Odeslal: {profiles.get(order.shipped_by ?? '')?.display_name ?? 'Neznámý uživatel'}</span></> : <span className={level === 'overdue' ? 'overdue-text' : ''}>{level === 'overdue' ? `NUTNÉ ODESLAT · čeká ${daysLabel(waitingDays(order.created_at, now))}` : `Čeká ${daysLabel(waitingDays(order.created_at, now))}`}</span>}</div></div>
           <div className="order-actions">{order.status === 'pending' && onShip && <button className={`button ship-button ${level === 'overdue' ? 'danger' : 'primary'}`} onClick={() => onShip(order)}><Check size={18} /><span>Označit jako odesláno</span></button>}{admin && <div className="admin-card-actions"><button className="icon-button" aria-label={`Upravit zakázku ${order.order_number}`} title="Upravit" onClick={() => onEdit?.(order)}><Pencil size={18} /></button><button className="icon-button delete-icon" aria-label={`Odstranit zakázku ${order.order_number}`} title="Odstranit" onClick={() => onDelete?.(order)}><Trash2 size={18} /></button></div>}{!onShip && !admin && <button className="icon-button" aria-label={`Detail zakázky ${order.order_number}`} onClick={() => onDetail(order)}><MoreHorizontal size={22} /></button>}</div>
+          {order.products?.length > 0 && <div className="order-products"><ProductsSummary products={order.products} /></div>}
         </article>;
       })}
     </div>

@@ -9,6 +9,7 @@ const order = (days: number, overrides: Partial<Order> = {}): Order => ({
   id: `id-${days}`, order_number: `ZAK-${days}`, customer: 'Zákazník', note: '',
   created_at: new Date(now - days * DAY_MS).toISOString(), updated_at: new Date(now).toISOString(),
   status: 'pending', shipped_at: null, created_by: 'admin', shipped_by: null, ...overrides,
+  products: [], source_order_number: '', customer_code: '', requested_ship_date: null, source_file_name: '',
 });
 
 describe('14denní limit', () => {

@@ -7,6 +7,7 @@
 - Přihlášení e-mailem a heslem, zachování session po refreshi, odhlášení.
 - Každý aktivní přihlášený uživatel: vytváření, úpravy, změna stavu, mazání s potvrzením, odesílání, administrace i historie. Není třeba ručně přiřazovat roli.
 - Pro novou zakázku stačí její číslo. Zákazník i poznámka jsou nepovinní.
+- Import PDF zakázky Sebimoto: číslo zakázky, datum „Založeno“, číslo objednávky, kód zákazníka, informativní termín, popis a produkty. Před uložením se údaje kontrolují a upravují. Produkty lze zadat a upravit i ručně.
 - Účty mají vlastní identity pro evidenci autora a odesílatele. Nepřihlášené, deaktivované a anonymní Supabase Auth účty nemají přístup k zakázkám.
 - Priority podle skutečného `created_at`: 0–9 dní standardní, 10–13 dní upozornění, 14+ dní červeně po termínu. Odeslané zakázky se nikdy nepočítají jako opožděné.
 - Čtyři souhrnné karty, vyhledávání podle čísla/zákazníka i bez diakritiky, filtry, historie, detail a export filtrované historie do CSV.
@@ -35,7 +36,7 @@ netlify.toml            build, SPA routing a bezpečnostní hlavičky
 
 `public.profiles`: UUID z `auth.users`, zobrazované jméno a aktivita účtu. Historický sloupec `role` zůstává kompatibilní s první migrací, ale po druhé migraci už nerozlišuje oprávnění. Každý aktivní běžný Auth účet má plný přístup. Profily vznikají automaticky; klient je nemůže měnit ani sám reaktivovat deaktivovaný účet.
 
-`public.orders`: UUID, povinné unikátní číslo zakázky (bez ohledu na velikost písmen), nepovinný zákazník a poznámka, `created_at`, `updated_at`, stav `pending` / `shipped`, `shipped_at`, `created_by`, `shipped_by`. Neuvedený zákazník se ukládá jako prázdný řetězec. Všechny časy jsou `timestamptz`. Stáří není uložené.
+`public.orders`: UUID, povinné unikátní číslo zakázky (bez ohledu na velikost písmen), nepovinný zákazník a poznámka, `created_at`, `updated_at`, stav `pending` / `shipped`, `shipped_at`, `created_by`, `shipped_by`. Neuvedený zákazník se ukládá jako prázdný řetězec. Všechny časy jsou `timestamptz`. Stáří není uložené. PDF metadata jsou `source_order_number`, `customer_code`, `requested_ship_date` a `source_file_name`. `products` je validované JSONB pole až 200 položek s kódem, názvem, variantou, kladným celým množstvím a volitelným počtem vyrobených kusů; podléhá stejné RLS i auditu jako zakázka.
 
 `private.order_events`: audit vložení, změn a smazání s časem, uživatelem a původním/novým záznamem. Není dostupný frontendovým rolím. Zachová i předchozí odeslání po návratu do čekajících či ručním smazání.
 
@@ -54,8 +55,8 @@ Rozhraní Supabase může mírně měnit názvy položek; zásadní jsou URL pro
 ## 2. Spuštění SQL migrací
 
 1. V Supabase otevřete **SQL Editor → New query**.
-2. V novém projektu postupně spusťte celý obsah [202610060001_initial.sql](supabase/migrations/202610060001_initial.sql), [202610060002_shared_access.sql](supabase/migrations/202610060002_shared_access.sql) a [202610060003_optional_customer.sql](supabase/migrations/202610060003_optional_customer.sql).
-3. V existujícím projektu spusťte **jen migrace, které ještě nebyly provedeny**. První je jednorázová instalace schématu. Druhá převede stávající účty na společný přístup, doplní chybějící profily a nastaví automatické vytváření profilů dalších účtů. Třetí umožní zakázky bez zákazníka. Zakázky i stávající zákazníci zůstávají zachovaní a deaktivované účty se znovu nezapnou.
+2. V novém projektu postupně spusťte celý obsah [202610060001_initial.sql](supabase/migrations/202610060001_initial.sql), [202610060002_shared_access.sql](supabase/migrations/202610060002_shared_access.sql), [202610060003_optional_customer.sql](supabase/migrations/202610060003_optional_customer.sql) a [202610060004_pdf_products.sql](supabase/migrations/202610060004_pdf_products.sql).
+3. V existujícím projektu spusťte **jen migrace, které ještě nebyly provedeny**. První je jednorázová instalace schématu. Druhá převede stávající účty na společný přístup, doplní chybějící profily a nastaví automatické vytváření profilů dalších účtů. Třetí umožní zakázky bez zákazníka. Čtvrtá přidává produkty a PDF metadata a obsahuje také podporu nepovinného zákazníka. Zakázky i stávající zákazníci zůstávají zachovaní a deaktivované účty se znovu nezapnou.
 4. V Table Editoru ověřte tabulky `profiles`, `orders` a zapnuté RLS. Veřejné registrace ponechte vypnuté, protože každý nový běžný účet získá plný přístup. Nepovolujte data roli `anon`.
 5. Migrace přidává obě veřejné tabulky do existující publikace `supabase_realtime`. Ověřte v **Database → Publications / Replication**, že jsou zahrnuté. Pokud realtime není aktivní, aplikace přesto pracuje a obnovuje data každých 30 sekund.
 
@@ -95,7 +96,7 @@ Deaktivovaný účet nemůže číst zakázky ani odesílat ani se starým platn
 
 ## 5. Environment variables lokálně
 
-Potřebujete **Node.js 22.12+ (řada 22 nebo 24), npm a Git**. Node.js 20.9 není podporován aktuálními závislostmi. Verzi ověřte `node --version`; po instalaci nového Node.js znovu otevřete terminál.
+Potřebujete **Node.js 22.13+ (řada 22 nebo 24), npm a Git**. Node.js 20.9 není podporován aktuálními závislostmi. Verzi ověřte `node --version`; po instalaci nového Node.js znovu otevřete terminál.
 
 V PowerShellu v projektové složce:
 
@@ -205,9 +206,21 @@ Historie není automaticky mazána. Přihlášený uživatel ji může odstranit
 
 Aplikace načítá kompletní seznam po stránkách (nepředpokládá limit API 1 000 řádků), aby souhrny a CSV nebyly neúplné. Seznam vykresluje po 20 položkách. Pro velmi rozsáhlé archivy v řádu stovek tisíc zakázek je další krok serverové filtrování, agregace a export; současná varianta je určená jednoduchému internímu skladu.
 
+## Import PDF a produkty
+
+1. V administraci nebo přehledu skladu klikněte na **Importovat PDF** a vyberte jednu zakázku (nejvýše 15 MB / 25 stran).
+2. PDF.js dokument přečte lokálně v prohlížeči. Podporovaný je textový formulář zakázky Sebimoto odpovídající dodanému vzoru. OCR skenů není implementováno; nečitelný, poškozený nebo zaheslovaný dokument dostane české vysvětlení.
+3. V náhledu ověřte číslo zakázky, datum a všechny produktové řádky. Počáteční nuly v číslech se zachovají. Čas u dne bez časové složky je 00:00 `Europe/Prague`; upozornění v náhledu tuto volbu uvádí. Datum vytištění „Vytvořeno“ se nepoužívá pro stáří.
+4. Pole „Popis“ přejde do poznámky. Zákazník zůstává nepovinný a nevymýšlí se z adresy nebo názvu dodavatele. „Termín“ je informativní; 14denní pravidlo se nemění.
+5. Produkty můžete přidat, opravit nebo odstranit. Následně zvolte **Vytvořit zakázku**. U existujícího čísla se import odmítne, aby nepřepsal jiné údaje. PDF s více různými zakázkami se odmítne; importujte je jednotlivě.
+6. V seznamu rozbalte **Produkty**, v detailu jsou dostupné položky i PDF metadata. Produkty zůstávají po odeslání v historii a jsou součástí CSV exportu.
+
+Originální PDF se neukládá na Supabase ani na externí službu. Do databáze se uloží pouze potvrzené údaje, produkty a název souboru. Autorem je vždy právě přihlášený uživatel, nikoli jméno vytištěné v PDF. Vzorové dokumenty ve složce `pdf/` jsou ignorované Gitem. PDF.js a worker se načítají až při použití importu; worker je součástí buildu a běží ze stejného webu.
+
 ## Oficiální dokumentace
 
 - [Supabase RLS](https://supabase.com/docs/guides/database/postgres/row-level-security)
 - [Supabase API klíče](https://supabase.com/docs/guides/api/api-keys)
 - [Supabase Realtime](https://supabase.com/docs/guides/realtime/postgres-changes)
 - [Vite na Netlify](https://docs.netlify.com/build/frameworks/framework-setup-guides/vite/)
+- [PDF.js](https://mozilla.github.io/pdf.js/examples/)

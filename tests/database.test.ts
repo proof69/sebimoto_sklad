@@ -40,6 +40,7 @@ describe('databázová bezpečnost', () => {
     await db.query("insert into public.profiles(id, display_name, role, is_active) values ($1, 'Deaktivovaný', 'SKLADNIK', false)", [inactive]);
     await db.exec(readFileSync(new URL('../supabase/migrations/202610060002_shared_access.sql', import.meta.url), 'utf8'));
     await db.exec(readFileSync(new URL('../supabase/migrations/202610060003_optional_customer.sql', import.meta.url), 'utf8'));
+    await db.exec(readFileSync(new URL('../supabase/migrations/202610060004_pdf_products.sql', import.meta.url), 'utf8'));
   }, 60_000);
 
   beforeEach(async () => {
@@ -66,6 +67,22 @@ describe('databázová bezpečnost', () => {
   });
   it('nepovinný zákazník stále respektuje limit 200 znaků', async () => {
     await expect(db.query("insert into public.orders(order_number, customer) values ('DLOUHY-ZAKAZNIK', $1)", ['x'.repeat(201)])).rejects.toMatchObject({ code: '23514' });
+  });
+  it('produkty a údaje PDF se ukládají se stejnou RLS ochranou a přežijí odeslání', async () => {
+    await identity(worker);
+    const items = [{ code: 'TEST-001', name: 'Testovací produkt', variant: 'A', quantity: 2, produced_quantity: null }];
+    const inserted = await db.query<{ id: string }>("insert into public.orders (order_number, products, source_order_number, customer_code, requested_ship_date, source_file_name) values ('PDF-001', $1::jsonb, 'OBJ-001', 'CUSTOMER-1', '2026-10-05', 'test.pdf') returning id", [JSON.stringify(items)]);
+    const shipped = await db.query<{ products: unknown; source_order_number: string; shipped_by: string }>('select * from public.ship_order($1)', [inserted.rows[0].id]);
+    expect(shipped.rows[0].products).toEqual(items);
+    expect(shipped.rows[0].source_order_number).toBe('OBJ-001');
+    expect(shipped.rows[0].shipped_by).toBe(worker);
+  });
+  it.each([0, -1, 1.5])('databáze odmítne neplatné množství produktu %s', async quantity => {
+    const items = [{ code: '', name: 'Produkt', variant: '', quantity, produced_quantity: null }];
+    await expect(db.query("insert into public.orders (order_number, products) values ('BAD-PRODUCT', $1::jsonb)", [JSON.stringify(items)])).rejects.toMatchObject({ code: '23514' });
+  });
+  it('databáze odmítne produkt bez názvu', async () => {
+    await expect(db.query("insert into public.orders (order_number, products) values ('BAD-PRODUCT', '[{\"code\":\"A\",\"name\":\"\",\"variant\":\"\",\"quantity\":1,\"produced_quantity\":null}]')")).rejects.toMatchObject({ code: '23514' });
   });
   it('nepřihlášený nemůže číst', async () => {
     await identity(null, 'anon');
