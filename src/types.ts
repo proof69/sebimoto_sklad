@@ -9,6 +9,7 @@ export type Product = {
   variant: string;
   quantity: number;
   produced_quantity: number | null;
+  packed_quantity?: number;
 };
 
 export type Profile = {
@@ -69,6 +70,7 @@ export type Database = {
     Views: { [_ in never]: never };
     Functions: {
       ship_order: { Args: { p_order_id: string }; Returns: Order[] };
+      pack_product: { Args: { p_order_id: string; p_product_index: number; p_delta: number; p_expected_product: Product }; Returns: Order[] };
       current_role: { Args: Record<string, never>; Returns: Role | null };
     };
     Enums: { app_role: Role; order_status: OrderStatus };

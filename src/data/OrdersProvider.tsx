@@ -17,6 +17,8 @@ interface OrdersState {
   update: (order: Order, input: OrderInput) => Promise<void>;
   remove: (order: Order) => Promise<void>;
   ship: (order: Order) => Promise<void>;
+  pack: (order: Order, productIndex: number, delta: 1 | -1) => Promise<void>;
+  packingBusyOrders: Set<string>;
 }
 const OrdersContext = createContext<OrdersState | null>(null);
 
@@ -61,6 +63,8 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const revision = useRef(0);
   const alive = useRef(false);
+  const packingRequests = useRef(new Set<string>());
+  const [packingBusyOrders, setPackingBusyOrders] = useState<Set<string>>(new Set());
 
   const reload = useCallback(async () => {
     const request = ++revision.current;
@@ -153,7 +157,23 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     merge(data);
   }, [merge, reload]);
 
-  const value = useMemo(() => ({ orders, profiles, loading, refreshing, error, realtime, lastUpdated, reload, create, update, remove, ship }), [orders, profiles, loading, refreshing, error, realtime, lastUpdated, reload, create, update, remove, ship]);
+  const pack = useCallback(async (order: Order, productIndex: number, delta: 1 | -1) => {
+    if (packingRequests.current.has(order.id)) return;
+    const product = order.products?.[productIndex];
+    if (!product) throw new Error('CONFLICT');
+    packingRequests.current.add(order.id);
+    setPackingBusyOrders(new Set(packingRequests.current));
+    try {
+      const { data, error: dbError } = await database().rpc('pack_product', { p_order_id: order.id, p_product_index: productIndex, p_delta: delta, p_expected_product: product }).single();
+      if (dbError) { void reload(); throw dbError; }
+      merge(data);
+    } finally {
+      packingRequests.current.delete(order.id);
+      setPackingBusyOrders(new Set(packingRequests.current));
+    }
+  }, [merge, reload]);
+
+  const value = useMemo(() => ({ orders, profiles, loading, refreshing, error, realtime, lastUpdated, reload, create, update, remove, ship, pack, packingBusyOrders }), [orders, profiles, loading, refreshing, error, realtime, lastUpdated, reload, create, update, remove, ship, pack, packingBusyOrders]);
   return <OrdersContext.Provider value={value}>{children}</OrdersContext.Provider>;
 }
 export function useOrders() {

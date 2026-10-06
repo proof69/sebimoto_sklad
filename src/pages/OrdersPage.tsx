@@ -2,7 +2,7 @@ import { lazy, Suspense, useMemo, useState } from 'react';
 import { AlertTriangle, Download, FileUp, Plus, Search, SlidersHorizontal } from 'lucide-react';
 import { useOrders } from '../data/OrdersProvider';
 import { useNow } from '../hooks/useNow';
-import { isToday, matchesFilter, ordersLabel, prioritySort, stats } from '../lib/orders';
+import { isToday, matchesFilter, ordersLabel, packingStats, prioritySort, stats } from '../lib/orders';
 import { errorMessage } from '../lib/errors';
 import { downloadHistory } from '../lib/csv';
 import type { PdfDraft } from '../lib/pdf-parser';
@@ -22,7 +22,7 @@ const PdfImport = lazy(() => import('../components/PdfImport').then(module => ({
 const OrderDetail = lazy(() => import('../components/OrderDetail').then(module => ({ default: module.OrderDetail })));
 
 export function OrdersPage({ mode }: { mode: 'warehouse' | 'admin' | 'history' }) {
-  const { orders, profiles, loading, error, reload, ship, remove } = useOrders();
+  const { orders, profiles, loading, error, reload, ship, remove, packingBusyOrders } = useOrders();
   const now = useNow();
   const notify = useToast();
   const [filter, setFilter] = useState<OrderFilter>(mode === 'history' ? 'shipped' : 'pending');
@@ -82,6 +82,6 @@ export function OrdersPage({ mode }: { mode: 'warehouse' | 'admin' | 'history' }
       {detail && <OrderDetail order={detail} now={now} onClose={() => setDetailId(null)} />}
     </Suspense>
     {detailId && !detail && !loading && <ConfirmDialog title="Zakázka už není v seznamu" confirmLabel="Zavřít" busy={false} onClose={() => setDetailId(null)} onConfirm={() => setDetailId(null)}><p>Zakázka byla mezitím odstraněna nebo se změnila vaše oprávnění.</p></ConfirmDialog>}
-    {action && <ConfirmDialog title={action.type === 'ship' ? 'Byla zakázka fyzicky odeslána?' : 'Odstranit zakázku?'} confirmLabel={action.type === 'ship' ? 'Ano, označit jako odesláno' : 'Odstranit zakázku'} destructive={action.type === 'delete'} busy={busy} onClose={() => setAction(null)} onConfirm={() => void confirm()}><p><strong>{action.order.order_number}</strong><br />{action.order.customer}</p><p>{action.type === 'ship' ? 'Potvrzením přesunete zakázku do historie. Zaznamená se přesný čas a vaše jméno.' : 'Zakázka bude odstraněna ze seznamu. Tuto akci nelze vrátit.'}</p>{actionError && <p className="inline-error" role="alert">{actionError}</p>}</ConfirmDialog>}
+    {action && <ConfirmDialog title={action.type === 'ship' ? 'Byla zakázka fyzicky odeslána?' : 'Odstranit zakázku?'} confirmLabel={action.type === 'ship' ? 'Ano, označit jako odesláno' : 'Odstranit zakázku'} destructive={action.type === 'delete'} busy={busy || packingBusyOrders.has(action.order.id)} onClose={() => setAction(null)} onConfirm={() => void confirm()}><p><strong>{action.order.order_number}</strong><br />{action.order.customer}</p><p>{action.type === 'ship' ? 'Potvrzením přesunete zakázku do historie. Zaznamená se přesný čas a vaše jméno.' : 'Zakázka bude odstraněna ze seznamu. Tuto akci nelze vrátit.'}</p>{action.type === 'ship' && packingStats((orders.find(o => o.id === action.order.id) ?? action.order).products ?? []).remaining > 0 && <p className="packing-shipping-warning" role="alert">Pozor: zbývá zabalit {packingStats((orders.find(o => o.id === action.order.id) ?? action.order).products ?? []).remaining} ks. Odeslání potvrďte pouze tehdy, pokud je zakázka skutečně kompletní a odeslaná.</p>}{actionError && <p className="inline-error" role="alert">{actionError}</p>}</ConfirmDialog>}
   </>;
 }

@@ -45,6 +45,19 @@ async function fixtures(page: Page, role: Role, options: { empty?: boolean; fail
       selected.updated_at = new Date().toISOString();
       return send(request.headers().accept?.includes('object+json') ? selected : [selected]);
     }
+    if (url.pathname.endsWith('/rpc/pack_product')) {
+      const body = request.postDataJSON();
+      const selected = rows.find(o => o.id === body.p_order_id);
+      if (!selected) return send({ code: 'P0002' }, 404);
+      if (selected.status !== 'pending') return send({ code: 'P0003' }, 400);
+      const product = selected.products[body.p_product_index];
+      if (!product) return send({ code: 'P0004' }, 400);
+      const next = (product.packed_quantity ?? 0) + body.p_delta;
+      if (next < 0 || next > product.quantity) return send({ code: 'P0005' }, 400);
+      product.packed_quantity = next;
+      selected.updated_at = new Date().toISOString();
+      return send(request.headers().accept?.includes('object+json') ? selected : [selected]);
+    }
     if (url.pathname.endsWith('/orders')) {
       if (options.failure) return send({ code: '42501', message: 'denied' }, 403);
       if (request.method() === 'POST') {
@@ -210,4 +223,43 @@ test('PDF import vyžaduje kontrolu a uloží produkty, čísla i původní datu
   await page.getByRole('button', { name: /PDF-TEST-001/ }).first().click();
   await expect(page.getByRole('dialog')).toContainText('Produkty (1)');
   await expect(page.getByRole('dialog')).toContainText('OBJ-001');
+});
+
+test('skladník balí po kusech, vidí co chybí a stav přežije refresh i odeslání', async ({ page }, info) => {
+  await fixtures(page, 'SKLADNIK'); await login(page);
+  await page.getByRole('button', { name: 'Importovat PDF', exact: true }).click();
+  await page.getByLabel('Vybrat PDF zakázky', { exact: true }).setInputFiles({ name: 'packing.pdf', mimeType: 'application/pdf', buffer: samplePdf() });
+  await expect(page.getByRole('dialog', { name: 'Zkontrolovat import z PDF' })).toBeVisible();
+  await page.getByRole('button', { name: 'Vytvořit zakázku', exact: true }).click();
+  await expect(page.getByText('Nová zakázka byla vytvořena.', { exact: true })).toBeVisible();
+  await page.getByRole('searchbox').fill('PDF-TEST-001');
+  await page.locator('.products-summary summary').click();
+  const plus = page.getByRole('button', { name: 'Zabalit jeden kus: Testovaci produkt', exact: true });
+  const minus = page.getByRole('button', { name: 'Odebrat zabalený kus: Testovaci produkt', exact: true });
+  await expect(minus).toBeDisabled();
+  await plus.click();
+  await expect(page.locator('.packing-value')).toContainText('1 / 2');
+  await expect(page.getByText('Zbývá zabalit 1 ks.', { exact: true })).toBeVisible();
+  await page.locator('.order-card').getByRole('button', { name: 'Označit jako odesláno', exact: true }).click();
+  await expect(page.getByRole('dialog')).toContainText('zbývá zabalit 1 ks');
+  await page.getByRole('button', { name: 'Zrušit', exact: true }).click();
+  await page.reload();
+  await page.getByRole('searchbox').fill('PDF-TEST-001');
+  await page.locator('.products-summary summary').click();
+  await expect(page.locator('.packing-value')).toContainText('1 / 2');
+  await plus.click();
+  await expect(page.locator('.packing-value')).toContainText('2 / 2');
+  await expect(plus).toBeDisabled();
+  await expect(page.getByText('Všechny produkty jsou v bedně.', { exact: true })).toBeVisible();
+  await minus.click(); await expect(page.locator('.packing-value')).toContainText('1 / 2');
+  await plus.click(); await expect(page.locator('.packing-value')).toContainText('2 / 2');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: info.outputPath('baleni-produktu.png'), fullPage: true });
+  await page.locator('.order-card').getByRole('button', { name: 'Označit jako odesláno', exact: true }).click();
+  await page.getByRole('button', { name: 'Ano, označit jako odesláno', exact: true }).click();
+  await expect(page.getByText('Zakázka byla označena jako odeslaná.', { exact: true })).toBeVisible();
+  await page.getByRole('link', { name: 'Historie odeslání' }).click();
+  await page.locator('.products-summary summary').click();
+  await expect(page.locator('.packing-value')).toContainText('2 / 2');
+  await expect(plus).toHaveCount(0); await expect(minus).toHaveCount(0);
 });

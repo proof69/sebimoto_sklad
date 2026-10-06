@@ -8,6 +8,7 @@
 - Každý aktivní přihlášený uživatel: vytváření, úpravy, změna stavu, mazání s potvrzením, odesílání, administrace i historie. Není třeba ručně přiřazovat roli.
 - Pro novou zakázku stačí její číslo. Zákazník i poznámka jsou nepovinní.
 - Import PDF zakázky Sebimoto: číslo zakázky, datum „Založeno“, číslo objednávky, kód zákazníka, informativní termín, popis a produkty. Před uložením se údaje kontrolují a upravují. Produkty lze zadat a upravit i ručně.
+- Balení po kusech: u každého produktu tlačítka + a −, uložený počet zabalených kusů, zbývající množství a zelené označení kompletního produktu i zakázky. Při neúplném balení potvrzení odeslání upozorní na chybějící kusy; odeslání lze přesto potvrdit.
 - Účty mají vlastní identity pro evidenci autora a odesílatele. Nepřihlášené, deaktivované a anonymní Supabase Auth účty nemají přístup k zakázkám.
 - Priority podle skutečného `created_at`: 0–9 dní standardní, 10–13 dní upozornění, 14+ dní červeně po termínu. Odeslané zakázky se nikdy nepočítají jako opožděné.
 - Čtyři souhrnné karty, vyhledávání podle čísla/zákazníka i bez diakritiky, filtry, historie, detail a export filtrované historie do CSV.
@@ -55,7 +56,7 @@ Rozhraní Supabase může mírně měnit názvy položek; zásadní jsou URL pro
 ## 2. Spuštění SQL migrací
 
 1. V Supabase otevřete **SQL Editor → New query**.
-2. V novém projektu postupně spusťte celý obsah [202610060001_initial.sql](supabase/migrations/202610060001_initial.sql), [202610060002_shared_access.sql](supabase/migrations/202610060002_shared_access.sql), [202610060003_optional_customer.sql](supabase/migrations/202610060003_optional_customer.sql) a [202610060004_pdf_products.sql](supabase/migrations/202610060004_pdf_products.sql).
+2. V novém projektu postupně spusťte celý obsah [202610060001_initial.sql](supabase/migrations/202610060001_initial.sql), [202610060002_shared_access.sql](supabase/migrations/202610060002_shared_access.sql), [202610060003_optional_customer.sql](supabase/migrations/202610060003_optional_customer.sql), [202610060004_pdf_products.sql](supabase/migrations/202610060004_pdf_products.sql) a [202610060005_product_packing.sql](supabase/migrations/202610060005_product_packing.sql).
 3. V existujícím projektu spusťte **jen migrace, které ještě nebyly provedeny**. První je jednorázová instalace schématu. Druhá převede stávající účty na společný přístup, doplní chybějící profily a nastaví automatické vytváření profilů dalších účtů. Třetí umožní zakázky bez zákazníka. Čtvrtá přidává produkty a PDF metadata a obsahuje také podporu nepovinného zákazníka. Zakázky i stávající zákazníci zůstávají zachovaní a deaktivované účty se znovu nezapnou.
 4. V Table Editoru ověřte tabulky `profiles`, `orders` a zapnuté RLS. Veřejné registrace ponechte vypnuté, protože každý nový běžný účet získá plný přístup. Nepovolujte data roli `anon`.
 5. Migrace přidává obě veřejné tabulky do existující publikace `supabase_realtime`. Ověřte v **Database → Publications / Replication**, že jsou zahrnuté. Pokud realtime není aktivní, aplikace přesto pracuje a obnovuje data každých 30 sekund.
@@ -216,6 +217,18 @@ Aplikace načítá kompletní seznam po stránkách (nepředpokládá limit API 
 6. V seznamu rozbalte **Produkty**, v detailu jsou dostupné položky i PDF metadata. Produkty zůstávají po odeslání v historii a jsou součástí CSV exportu.
 
 Originální PDF se neukládá na Supabase ani na externí službu. Do databáze se uloží pouze potvrzené údaje, produkty a název souboru. Autorem je vždy právě přihlášený uživatel, nikoli jméno vytištěné v PDF. Vzorové dokumenty ve složce `pdf/` jsou ignorované Gitem. PDF.js a worker se načítají až při použití importu; worker je součástí buildu a běží ze stejného webu.
+
+## Balení produktů do bedny
+
+Po instalaci čtvrté migrace spusťte na existujícím Supabase projektu také **pátou migraci `202610060005_product_packing.sql`**. Samotný deploy frontendu databázovou funkci nevytvoří. Pátá migrace zachová všechny zakázky i produkty; starší položky bez `packed_quantity` se počítají jako nula zabalených kusů.
+
+V seznamu rozbalte **Produkty** nebo otevřete detail zakázky. Každé **+** znamená jeden kus vložený do bedny; **−** opraví omyl nebo odebrání kusu. Zobrazuje se například **2 / 5**, **Chybí 3 ks** a celkový průběh zakázky. Po zabalení všech kusů je produkt zelený s potvrzovacím symbolem. Počty se uloží do Supabase, zůstanou po refreshi a ostatní uživatelé je dostanou přes Realtime nebo záložní obnovování.
+
+Funkce `pack_product()` ověřuje aktivní účet, čekající stav a rozsah 0 až požadovaný počet. Pod zámkem řádku přičítá nebo odečítá od aktuálního serverového počtu, takže souběžná kliknutí nepřepisují navzájem svůj postup. Změněný či odstraněný produkt odmítne a klient obnoví data. Balení je součástí soukromého auditu. Formulář nepovolí snížit množství pod už zabalený počet; nejprve kusy odečtěte.
+
+Před odesláním neúplně zabalené zakázky je v potvrzovacím dialogu upozornění s počtem chybějících kusů. Uživatel může odeslání přesto potvrdit. Po odeslání jsou počty v přehledu a detailu pouze ke čtení, zůstávají v historii a exportují se do CSV. Zakázky bez produktů fungují jako dosud.
+
+Pro provozní ověření zkuste produkt s třemi kusy: přidejte dva, obnovte stránku, ověřte 2 / 3, odečtěte jeden a dokončete balení. Zkontrolujte také druhý přihlášený prohlížeč, upozornění před neúplným odesláním a zachování počtů v historii.
 
 ## Oficiální dokumentace
 

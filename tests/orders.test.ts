@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Order } from '../src/types';
-import { DAY_MS, isToday, matchesFilter, prioritySort, stats, urgency, validateOrder, waitingDays } from '../src/lib/orders';
+import { DAY_MS, isToday, matchesFilter, packingStats, prioritySort, stats, urgency, validateOrder, waitingDays } from '../src/lib/orders';
 import { csvCell, historyCsv } from '../src/lib/csv';
 import { validateConfig } from '../src/lib/config';
 
@@ -41,6 +41,13 @@ describe('14denní limit', () => {
 });
 
 describe('formuláře a export', () => {
+  it('balení starších produktů začíná na nule a počítá chybějící kusy', () => {
+    const product = { code: 'A', name: 'Produkt', variant: '', quantity: 4, produced_quantity: null };
+    expect(packingStats([product])).toEqual({ packed: 0, required: 4, remaining: 4, completed: false });
+    expect(packingStats([{ ...product, packed_quantity: 2 }])).toEqual({ packed: 2, required: 4, remaining: 2, completed: false });
+    expect(packingStats([{ ...product, packed_quantity: 4 }]).completed).toBe(true);
+    expect(validateOrder({ order_number: 'A', note: '', products: [{ ...product, packed_quantity: 5 }] })).toBeTruthy();
+  });
   it('validuje povinná pole, délku a budoucí datum', () => {
     expect(validateOrder({ order_number: ' ', customer: 'A', note: '' }, now)).toBeTruthy();
     expect(validateOrder({ order_number: 'A', customer: ' ', note: '' }, now)).toBeNull();

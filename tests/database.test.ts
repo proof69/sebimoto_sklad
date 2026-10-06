@@ -9,6 +9,7 @@ const worker = '00000000-0000-0000-0000-000000000002';
 const outsider = '00000000-0000-0000-0000-000000000003';
 const inactive = '00000000-0000-0000-0000-000000000006';
 const orderId = '00000000-0000-0000-0000-000000000011';
+const packingItems = [{ code: 'PACK-1', name: 'Produkt k balení', variant: 'A', quantity: 2, produced_quantity: null }];
 let db: PGlite;
 
 async function identity(id: string | null, role = 'authenticated') {
@@ -41,6 +42,7 @@ describe('databázová bezpečnost', () => {
     await db.exec(readFileSync(new URL('../supabase/migrations/202610060002_shared_access.sql', import.meta.url), 'utf8'));
     await db.exec(readFileSync(new URL('../supabase/migrations/202610060003_optional_customer.sql', import.meta.url), 'utf8'));
     await db.exec(readFileSync(new URL('../supabase/migrations/202610060004_pdf_products.sql', import.meta.url), 'utf8'));
+    await db.exec(readFileSync(new URL('../supabase/migrations/202610060005_product_packing.sql', import.meta.url), 'utf8'));
   }, 60_000);
 
   beforeEach(async () => {
@@ -83,6 +85,52 @@ describe('databázová bezpečnost', () => {
   });
   it('databáze odmítne produkt bez názvu', async () => {
     await expect(db.query("insert into public.orders (order_number, products) values ('BAD-PRODUCT', '[{\"code\":\"A\",\"name\":\"\",\"variant\":\"\",\"quantity\":1,\"produced_quantity\":null}]')")).rejects.toMatchObject({ code: '23514' });
+  });
+  async function preparePacking() {
+    await db.query('update public.orders set products = $1::jsonb where id = $2', [JSON.stringify(packingItems), orderId]);
+    await identity(worker);
+  }
+  async function packPiece(delta: number, index = 0, expected = packingItems[0]) {
+    return db.query<{ products: { packed_quantity?: number }[] }>('select * from public.pack_product($1, $2, $3, $4::jsonb)', [orderId, index, delta, JSON.stringify(expected)]);
+  }
+  it('přičítá kusy atomicky i se starým klientským počtem a umožní opravu mínusem', async () => {
+    await preparePacking();
+    expect((await packPiece(1)).rows[0].products[0].packed_quantity).toBe(1);
+    // Stejný původní produkt bez packed_quantity: druhý skladník neodečte první změnu.
+    expect((await packPiece(1)).rows[0].products[0].packed_quantity).toBe(2);
+    expect((await packPiece(-1)).rows[0].products[0].packed_quantity).toBe(1);
+  });
+  it('nelze zabalit více kusů, než je objednáno', async () => {
+    await preparePacking(); await packPiece(1); await packPiece(1);
+    await expect(packPiece(1)).rejects.toMatchObject({ code: 'P0005' });
+  });
+  it('nelze odebrat kus pod nulu', async () => {
+    await preparePacking();
+    await expect(packPiece(-1)).rejects.toMatchObject({ code: 'P0005' });
+  });
+  it('odmítá zastaralý nebo odstraněný produkt místo změny jiného řádku', async () => {
+    await preparePacking();
+    await db.query("update public.orders set products = jsonb_set(products, '{0,name}', '\"Změněný produkt\"') where id = $1", [orderId]);
+    await expect(packPiece(1)).rejects.toMatchObject({ code: 'P0004' });
+  });
+  it('po odeslání nelze měnit balení, ale jeho stav zůstane v historii', async () => {
+    await preparePacking(); await packPiece(1);
+    const shipped = await db.query<{ products: { packed_quantity: number }[] }>('select * from public.ship_order($1)', [orderId]);
+    expect(shipped.rows[0].products[0].packed_quantity).toBe(1);
+    await expect(packPiece(1)).rejects.toMatchObject({ code: 'P0003' });
+  });
+  it('nepřihlášený nemůže měnit balení přes RPC', async () => {
+    await preparePacking(); await identity(null, 'anon');
+    await expect(packPiece(1)).rejects.toMatchObject({ code: '42501' });
+  });
+  it('deaktivovaný účet nemůže měnit balení', async () => {
+    await preparePacking(); await db.exec('reset role');
+    await db.query('update public.profiles set is_active = false where id = $1', [worker]);
+    await identity(worker);
+    await expect(packPiece(1)).rejects.toMatchObject({ code: '42501' });
+  });
+  it.each([-1, 3, 0.5])('přímé API nemůže uložit neplatný počet zabalených kusů %s', async packed_quantity => {
+    await expect(db.query('update public.orders set products = $1::jsonb where id = $2', [JSON.stringify([{ ...packingItems[0], packed_quantity }]), orderId])).rejects.toMatchObject({ code: '23514' });
   });
   it('nepřihlášený nemůže číst', async () => {
     await identity(null, 'anon');
