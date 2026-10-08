@@ -7,6 +7,10 @@ function sample(): PdfCell[] {
   return [cell('Zakázka', 27, 42), cell('00001234', 103, 42), cell('Kód zákazníka', 30, 106), cell('00000001', 102, 108), cell('Objednávka', 233, 105), cell('00005678', 288, 108), cell('Založeno:', 366, 106), cell('05.10.2026', 414, 106), cell('Termín:', 482, 106), cell('5.10.2026', 519, 106), cell('Popis', 27, 138), cell('Testovací popis bez osobních údajů', 27, 152), cell('Produkt', 26, 206), cell('Varianta', 323, 206), cell('Počet kusů', 380, 206), cell('Počet vyrobených kusů', 468, 206), cell('TEST-001', 27, 224), cell('První produkt', 108, 224), cell('A', 322, 224), cell('2', 418, 225), cell('TEST-002', 27, 240), cell('Druhý produkt', 108, 241), cell('B', 322, 240), cell('3', 418, 241), cell('1', 550, 241), cell('Celkem:', 332, 331), cell('5', 418, 332), cell('Počet položek: 2', 24, 357), cell('Vytvořeno 6.10.2026 10:09:08 uživatelem', 24, 803)];
 }
 describe('import PDF zakázky', () => {
+  it('načte kód 00000082 z hlavičky vzorového rozložení', () => {
+    const cells = sample().map(c => c.text === '00000001' ? { ...c, text: '00000082' } : c);
+    expect(parseOrderPdf(cells, 'test.pdf').customer_code).toBe('00000082');
+  });
   it('zachová nuly v číslech a používá Založeno, nikoli datum vytištění', () => {
     const parsed = parseOrderPdf(sample().reverse(), 'test.pdf');
     expect(parsed.order_number).toBe('00001234');

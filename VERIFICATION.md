@@ -1,5 +1,9 @@
 # Ověření projektu
 
+## Kód zákazníka v přehledu – 8. 10. 2026
+
+Skutečný soubor `pdf/24189.pdf` byl znovu načten PDF.js a produkčním parserem: `customer_code` je `00000082`. Import a ukládání byly již podporované, doplněno zobrazení na kartách všech přehledů a vyhledávání podle kódu. Počáteční nuly zůstávají zachované. TypeScript, produkční build a 84 testů prošly. PDF scénář se zobrazením kódu a vyhledáním importované zakázky podle něj prošel na desktopu, tabletu a mobilu. Nová SQL migrace není potřeba; změna zatím není nasazená.
+
 ## Evidence zobrazení – 8. 10. 2026
 
 Přidána migrace `202610080001_order_views.sql`, serverem určený první čas zobrazení a uživatel, samostatná evidence bez změny zakázky, realtime a polling. Rozbalení produktů i otevření detailu ukládá zobrazení. Přehled i detail ukazují očko, jména a vlastní stav nové/viděné zakázky.

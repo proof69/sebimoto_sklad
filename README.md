@@ -240,6 +240,8 @@ Pro provozní ověření zkuste produkt s třemi kusy: přidejte dva, obnovte st
 
 ## Kdo zakázku zobrazil
 
+Kód zákazníka z PDF se zobrazuje přímo na kartě zakázky ve skladu, administraci i historii a lze podle něj vyhledávat. Zachovává původní zápis včetně počátečních nul (například `00000082`). Kód je také dostupný v detailu, formuláři a CSV. Tato úprava nevyžaduje novou SQL migraci.
+
 Po šesti původních migracích spusťte také [202610080001_order_views.sql](supabase/migrations/202610080001_order_views.sql) v Supabase SQL Editoru a nasaďte nový frontend.
 
 Rozbalení produktů nebo otevření detailu zaznamená první zobrazení přihlášeného uživatele. Očko u zakázky ukazuje jména všech uživatelů, kteří ji otevřeli. „Pro vás nové“ znamená, že ji aktuální uživatel ještě neotevřel; „Už jste viděl(a)“ zůstane zachováno po refreshi i na jiném zařízení. Pouhé načtení přehledu ani vytvoření zakázky ji automaticky neoznačuje jako viděnou. Starší zobrazení před zavedením funkce nejsou známá, takže stávající zakázky začínají jako neviděné.

@@ -413,3 +413,4 @@ h3, h4 { font-weight: 650; }
 .order-readers { color: var(--muted); }
 .order-readers svg { vertical-align: middle; }
 .view-error { color: var(--muted); }
+.order-customer-code { margin: 6px 0; font-size: .875rem; color: var(--text); overflow-wrap: anywhere; }

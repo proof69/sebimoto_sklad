@@ -240,6 +240,9 @@ test('PDF import vyžaduje kontrolu a uloží produkty, čísla i původní datu
   await page.getByRole('button', { name: 'Vytvořit zakázku', exact: true }).click();
   await expect(page.getByText('Nová zakázka byla vytvořena.', { exact: true })).toBeVisible();
   await page.getByRole('searchbox').fill('PDF-TEST-001');
+  await expect(page.locator('.order-card')).toContainText('Kód zákazníka: CUST-001');
+  await page.getByRole('searchbox').fill('CUST-001');
+  await expect(page.locator('.order-card')).toHaveCount(1);
   await page.locator('.products-summary summary').click();
   await expect(page.locator('.order-card')).toContainText('Už jste viděl(a)');
   await expect(page.locator('.order-card')).toContainText('Jan Skladník (vy)');
