@@ -238,6 +238,14 @@ Před odesláním neúplně zabalené zakázky je v potvrzovacím dialogu upozor
 
 Pro provozní ověření zkuste produkt s třemi kusy: přidejte dva, obnovte stránku, ověřte 2 / 3, odečtěte jeden a dokončete balení. Zkontrolujte také druhý přihlášený prohlížeč, upozornění před neúplným odesláním a zachování počtů v historii.
 
+## Kdo zakázku zobrazil
+
+Po šesti původních migracích spusťte také [202610080001_order_views.sql](supabase/migrations/202610080001_order_views.sql) v Supabase SQL Editoru a nasaďte nový frontend.
+
+Rozbalení produktů nebo otevření detailu zaznamená první zobrazení přihlášeného uživatele. Očko u zakázky ukazuje jména všech uživatelů, kteří ji otevřeli. „Pro vás nové“ znamená, že ji aktuální uživatel ještě neotevřel; „Už jste viděl(a)“ zůstane zachováno po refreshi i na jiném zařízení. Pouhé načtení přehledu ani vytvoření zakázky ji automaticky neoznačuje jako viděnou. Starší zobrazení před zavedením funkce nejsou známá, takže stávající zakázky začínají jako neviděné.
+
+Evidence se ukládá do samostatné tabulky `order_views`, nemění `updated_at` zakázky ani její prioritu. Jméno uživatele a čas určuje server; klient nemůže zapisovat zobrazení za jiného uživatele ani evidenci mazat. Odeslání evidenci zachová, smazání zakázky odstraní její zobrazení. Ostatní uživatelé dostanou aktualizaci přes Realtime nebo obnovu každých 30 sekund. Při chybě evidence se zobrazí vysvětlení místo zavádějícího označení nové zakázky.
+
 ## Oficiální dokumentace
 
 - [Supabase RLS](https://supabase.com/docs/guides/database/postgres/row-level-security)

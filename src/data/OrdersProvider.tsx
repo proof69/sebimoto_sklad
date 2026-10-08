@@ -2,9 +2,13 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useAuth } from '../auth/AuthProvider';
 import { database } from '../lib/supabase';
 import { errorMessage } from '../lib/errors';
-import type { Order, OrderInput, Profile } from '../types';
+import type { Order, OrderInput, OrderView, Profile } from '../types';
 
 interface OrdersState {
+  views: OrderView[];
+  viewsReady: boolean;
+  viewsError: string | null;
+  markViewed: (orderId: string) => Promise<void>;
   orders: Order[];
   profiles: Map<string, Profile>;
   loading: boolean;
@@ -55,6 +59,11 @@ async function readAllProfiles(): Promise<Profile[]> {
 export function OrdersProvider({ children }: { children: ReactNode }) {
   const { profile } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
+  const [views, setViews] = useState<OrderView[]>([]);
+  const [viewsReady, setViewsReady] = useState(false);
+  const [viewsError, setViewsError] = useState<string | null>(null);
+  const viewsRevision = useRef(0);
+  const viewingRequests = useRef(new Set<string>());
   const [profiles, setProfiles] = useState<Map<string, Profile>>(new Map());
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -65,6 +74,38 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
   const alive = useRef(false);
   const packingRequests = useRef(new Set<string>());
   const [packingBusyOrders, setPackingBusyOrders] = useState<Set<string>>(new Set());
+
+  const reloadViews = useCallback(async () => {
+    const request = ++viewsRevision.current;
+    try {
+      const rows: OrderView[] = [];
+      for (let offset = 0; ; offset += 500) {
+        const { data, error } = await database().from('order_views').select('*').order('order_id').order('user_id').range(offset, offset + 499);
+        if (error) throw error;
+        rows.push(...data);
+        if (data.length < 500) break;
+      }
+      if (!alive.current || request !== viewsRevision.current) return;
+      setViews(rows); setViewsReady(true); setViewsError(null);
+    } catch (err) {
+      if (alive.current && request === viewsRevision.current) {
+        setViewsReady(false); setViewsError(errorMessage(err));
+      }
+    }
+  }, []);
+
+  const markViewed = useCallback(async (orderId: string) => {
+    if (viewingRequests.current.has(orderId)) return;
+    viewingRequests.current.add(orderId);
+    try {
+      const { data, error } = await database().rpc('mark_order_viewed', { p_order_id: orderId }).single();
+      if (error) throw error;
+      if (!alive.current) return;
+      ++viewsRevision.current;
+      setViews(current => [...current.filter(v => v.order_id !== data.order_id || v.user_id !== data.user_id), data]);
+      void reloadViews();
+    } finally { viewingRequests.current.delete(orderId); }
+  }, [reloadViews]);
 
   const reload = useCallback(async () => {
     const request = ++revision.current;
@@ -88,28 +129,31 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     alive.current = true;
+    void reloadViews();
     setLoading(true);
     void reload();
     let debounce: ReturnType<typeof setTimeout>;
     const queueReload = () => {
       clearTimeout(debounce);
-      debounce = setTimeout(() => { void reload(); }, 200);
+      debounce = setTimeout(() => { void reload(); void reloadViews(); }, 200);
     };
     const channel = database().channel(`warehouse-${profile?.id}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, queueReload)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, queueReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'order_views' }, () => { void reloadViews(); })
       .subscribe(status => {
         if (!alive.current) return;
         if (status === 'SUBSCRIBED') { setRealtime('live'); queueReload(); }
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') setRealtime('fallback');
       });
     // Polling také zachytí smazání, které Postgres Changes s RLS nemusí doručit.
-    const interval = setInterval(() => { void reload(); }, 30_000);
-    const visible = () => { if (document.visibilityState === 'visible') void reload(); };
+    const interval = setInterval(() => { void reload(); void reloadViews(); }, 30_000);
+    const visible = () => { if (document.visibilityState === 'visible') { void reload(); void reloadViews(); } };
     document.addEventListener('visibilitychange', visible);
     window.addEventListener('online', queueReload);
     return () => {
       alive.current = false;
+      ++viewsRevision.current;
       ++revision.current;
       clearTimeout(debounce);
       clearInterval(interval);
@@ -117,7 +161,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       window.removeEventListener('online', queueReload);
       void database().removeChannel(channel);
     };
-  }, [profile?.id, reload]);
+  }, [profile?.id, reload, reloadViews]);
 
   const merge = useCallback((row: Order) => {
     // Zneplatní načítání zahájené před mutací, aby nepřepsalo nové lokální údaje.
@@ -174,7 +218,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
   }, [merge, reload]);
 
   const value = useMemo(() => ({ orders, profiles, loading, refreshing, error, realtime, lastUpdated, reload, create, update, remove, ship, pack, packingBusyOrders }), [orders, profiles, loading, refreshing, error, realtime, lastUpdated, reload, create, update, remove, ship, pack, packingBusyOrders]);
-  return <OrdersContext.Provider value={value}>{children}</OrdersContext.Provider>;
+  return <OrdersContext.Provider value={{ ...value, views, viewsReady, viewsError, markViewed }}>{children}</OrdersContext.Provider>;
 }
 export function useOrders() {
   const context = useContext(OrdersContext);

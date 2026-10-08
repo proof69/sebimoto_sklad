@@ -1,5 +1,13 @@
 # Ověření projektu
 
+## Evidence zobrazení – 8. 10. 2026
+
+Přidána migrace `202610080001_order_views.sql`, serverem určený první čas zobrazení a uživatel, samostatná evidence bez změny zakázky, realtime a polling. Rozbalení produktů i otevření detailu ukládá zobrazení. Přehled i detail ukazují očko, jména a vlastní stav nové/viděné zakázky.
+
+TypeScript kontrola a produkční build prošly. Všech 83 logických a databázových testů prošlo, včetně ochrany identity, deaktivovaných a anonymních účtů, opakovaného otevření, zachování zakázky a odstranění evidence při smazání zakázky. Dosavadních 24 prohlížečových scénářů prošlo; PDF scénář navíc ověřuje označení zobrazení po rozbalení. Nový scénář detailu, jména kolegy, vlastní identity a zachování po refreshi prošel na desktopu, tabletu i mobilu po zpřesnění selektoru tlačítka. Ukončení procesu Playwright na Windows zůstává pomalé; výsledky jednotlivých scénářů byly ověřeny z výstupu běhu.
+
+Nová migrace nebyla spuštěna na vzdáleném Supabase a frontend nebyl nasazen. Funkce nezná historická otevření před instalací migrace.
+
 Projekt byl vytvořen v `C:\sklad-expedice` a lokálně ověřen 6. 10. 2026.
 
 - Instalace: `npm install` dokončena, lockfile je součástí projektu.

@@ -406,3 +406,10 @@ h3, h4 { font-weight: 650; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+.order-views { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 10px; font-size: .8rem; overflow-wrap: anywhere; }
+.view-status { display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border: 1px solid currentColor; border-radius: 999px; color: var(--text); }
+.view-status.seen { color: var(--green); }
+.order-readers { color: var(--muted); }
+.order-readers svg { vertical-align: middle; }
+.view-error { color: var(--muted); }

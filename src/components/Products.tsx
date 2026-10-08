@@ -31,10 +31,12 @@ export function ProductTable({ products, order }: { products: Product[]; order?:
 }
 
 export function ProductsSummary({ products = [], order }: { products?: Product[]; order?: Order }) {
+  const { markViewed } = useOrders();
+  const notify = useToast();
   if (!products.length) return null;
   const progress = packingStats(products);
   const preparation = preparationStats(products);
-  return <details className={`products-summary ${progress.completed ? 'all-packed' : ''}`}><summary>Produkty ({products.length}) · připraveno {preparation.prepared} z {preparation.required} ks · zabaleno {progress.packed} z {progress.required} ks{progress.completed && <span className="packing-done-badge">Vše zabaleno</span>}</summary>
+  return <details onToggle={event => { if (event.currentTarget.open && order) void markViewed(order.id).catch(err => notify(`Zobrazení se nepodařilo uložit. ${errorMessage(err)}`, 'error')); }} className={`products-summary ${progress.completed ? 'all-packed' : ''}`}><summary>Produkty ({products.length}) · připraveno {preparation.prepared} z {preparation.required} ks · zabaleno {progress.packed} z {progress.required} ks{progress.completed && <span className="packing-done-badge">Vše zabaleno</span>}</summary>
     <div className="packing-overview preparation-overview"><progress value={preparation.prepared} max={preparation.required} aria-label="Průběh přípravy zakázky" /><p>{preparation.completed ? 'Všechny produkty jsou připravené.' : order?.status === 'shipped' ? `${preparation.remaining} ks nebylo označeno jako připravené.` : `Zbývá připravit ${preparation.remaining} ks.`}</p></div>
     <div className="packing-overview"><progress value={progress.packed} max={progress.required} aria-label="Průběh balení zakázky" /><p>{progress.completed ? 'Všechny produkty jsou v bedně.' : order?.status === 'shipped' ? `${progress.remaining} ks nebylo označeno jako zabalené.` : `Zbývá zabalit ${progress.remaining} ks.`}</p></div><ProductTable products={products} order={order} /></details>;
 }

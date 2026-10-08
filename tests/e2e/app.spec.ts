@@ -1,7 +1,7 @@
 // Síťové fixtures jsou výhradně v testech. Produkce používá pouze Supabase.
 // Bezpečnost RLS se ověřuje odděleně proti PostgreSQL v database.test.ts.
 import { expect, test, type Page } from '@playwright/test';
-import type { Order, Profile, Role } from '../../src/types';
+import type { Order, OrderView, Profile, Role } from '../../src/types';
 import { DAY_MS } from '../../src/lib/orders';
 import { samplePdf } from './pdf-fixture';
 
@@ -10,6 +10,7 @@ const workerId = '00000000-0000-0000-0000-000000000002';
 
 async function fixtures(page: Page, role: Role, options: { empty?: boolean; failure?: boolean } = {}) {
   const id = role === 'ADMIN' ? adminId : workerId;
+  const views: OrderView[] = [{ order_id: '00000000-0000-0000-0000-000000000100', user_id: adminId, viewed_at: new Date().toISOString() }];
   const people: Profile[] = [
     { id: adminId, display_name: 'Eva Správcová', role: 'ADMIN', is_active: true },
     { id: workerId, display_name: 'Jan Skladník', role: 'SKLADNIK', is_active: true },
@@ -31,6 +32,14 @@ async function fixtures(page: Page, role: Role, options: { empty?: boolean; fail
     if (url.pathname.endsWith('/token')) return send({ access_token: token, refresh_token: 'test-refresh', token_type: 'bearer', expires_in: 3600, user });
     if (url.pathname.endsWith('/user')) return send(user);
     if (url.pathname.endsWith('/logout')) return send({});
+    if (url.pathname.endsWith('/order_views')) return send(views);
+    if (url.pathname.endsWith('/rpc/mark_order_viewed')) {
+      const orderId = request.postDataJSON().p_order_id;
+      if (!rows.some(o => o.id === orderId)) return send({ code: 'P0002' }, 404);
+      let viewed = views.find(v => v.order_id === orderId && v.user_id === id);
+      if (!viewed) { viewed = { order_id: orderId, user_id: id, viewed_at: new Date().toISOString() }; views.push(viewed); }
+      return send(request.headers().accept?.includes('object+json') ? viewed : [viewed]);
+    }
     if (url.pathname.endsWith('/profiles')) {
       const selected = url.searchParams.get('id')?.replace('eq.', '');
       const data = selected ? people.filter(p => p.id === selected) : people;
@@ -90,6 +99,21 @@ async function login(page: Page) {
   await page.getByLabel('Heslo', { exact: true }).fill('bezpecne-testovaci-heslo');
   await page.getByRole('button', { name: 'Přihlásit se', exact: true }).click();
 }
+
+test('zobrazení detailu ukáže kolegy i vlastní stav a přežije refresh', async ({ page }) => {
+  await fixtures(page, 'SKLADNIK'); await login(page);
+  const card = page.locator('.order-card').filter({ has: page.getByRole('button', { name: 'ZAK-1', exact: true }) }).first();
+  await expect(card).toContainText('Pro vás nové');
+  await expect(card).toContainText('Eva Správcová');
+  await card.getByRole('button', { name: 'ZAK-1', exact: true }).click();
+  await expect(page.getByRole('dialog')).toContainText('Jan Skladník (vy)');
+  await page.getByRole('button', { name: 'Zavřít detail', exact: true }).click();
+  await expect(card).toContainText('Už jste viděl(a)');
+  await page.reload();
+  await expect(card).toContainText('Už jste viděl(a)');
+  await expect(page.locator('.order-card').nth(1)).toContainText('Pro vás nové');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
 
 test('nepřihlášený nevidí zakázky ani při otevření vnitřní URL', async ({ page }) => {
   await fixtures(page, 'SKLADNIK');
@@ -217,6 +241,8 @@ test('PDF import vyžaduje kontrolu a uloží produkty, čísla i původní datu
   await expect(page.getByText('Nová zakázka byla vytvořena.', { exact: true })).toBeVisible();
   await page.getByRole('searchbox').fill('PDF-TEST-001');
   await page.locator('.products-summary summary').click();
+  await expect(page.locator('.order-card')).toContainText('Už jste viděl(a)');
+  await expect(page.locator('.order-card')).toContainText('Jan Skladník (vy)');
   await expect(page.locator('.products-table')).toContainText('Opravený produkt');
   await expect(page.locator('.order-card')).toContainText('5. 10. 2026');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);

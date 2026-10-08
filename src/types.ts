@@ -20,6 +20,8 @@ export type Profile = {
   is_active: boolean;
 };
 
+export type OrderView = { order_id: string; user_id: string; viewed_at: string };
+
 export type Order = {
   id: string;
   order_number: string;
@@ -55,6 +57,12 @@ export type OrderInput = {
 export type Database = {
   public: {
     Tables: {
+      order_views: {
+        Row: OrderView;
+        Insert: OrderView;
+        Update: Partial<OrderView>;
+        Relationships: [];
+      };
       profiles: {
         Row: Profile;
         Insert: Profile;
@@ -70,6 +78,7 @@ export type Database = {
     };
     Views: { [_ in never]: never };
     Functions: {
+      mark_order_viewed: { Args: { p_order_id: string }; Returns: OrderView[] };
       ship_order: { Args: { p_order_id: string }; Returns: Order[] };
       pack_product: { Args: { p_order_id: string; p_product_index: number; p_delta: number; p_expected_product: Product }; Returns: Order[] };
       prepare_product: { Args: { p_order_id: string; p_product_index: number; p_delta: number; p_expected_product: Product }; Returns: Order[] };

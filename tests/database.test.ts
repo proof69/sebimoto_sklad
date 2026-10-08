@@ -44,6 +44,7 @@ describe('databázová bezpečnost', () => {
     await db.exec(readFileSync(new URL('../supabase/migrations/202610060004_pdf_products.sql', import.meta.url), 'utf8'));
     await db.exec(readFileSync(new URL('../supabase/migrations/202610060005_product_packing.sql', import.meta.url), 'utf8'));
     await db.exec(readFileSync(new URL('../supabase/migrations/202610060006_product_preparation.sql', import.meta.url), 'utf8'));
+    await db.exec(readFileSync(new URL('../supabase/migrations/202610080001_order_views.sql', import.meta.url), 'utf8'));
   }, 60_000);
 
   beforeEach(async () => {
@@ -53,6 +54,44 @@ describe('databázová bezpečnost', () => {
   });
   afterEach(async () => { await db.exec('rollback; reset role;'); });
   afterAll(async () => { await db.close(); });
+
+  it('zobrazení eviduje skutečného uživatele jednou a nemění zakázku', async () => {
+    const before = (await db.query('select * from public.orders where id = $1', [orderId])).rows[0];
+    await identity(worker);
+    const first = (await db.query('select * from public.mark_order_viewed($1)', [orderId])).rows[0];
+    expect(first).toMatchObject({ order_id: orderId, user_id: worker });
+    expect((await db.query('select * from public.mark_order_viewed($1)', [orderId])).rows[0]).toEqual(first);
+    await identity(admin);
+    await db.query('select * from public.mark_order_viewed($1)', [orderId]);
+    expect((await db.query('select * from public.order_views')).rows).toHaveLength(2);
+    expect((await db.query('select * from public.orders where id = $1', [orderId])).rows[0]).toEqual(before);
+    await db.query('select * from public.ship_order($1)', [orderId]);
+    expect((await db.query('select * from public.order_views')).rows).toHaveLength(2);
+    await db.query('delete from public.orders where id = $1', [orderId]);
+    expect((await db.query('select * from public.order_views')).rows).toHaveLength(0);
+  });
+  it.each(['anon', 'inactive', 'anonymous'])('zobrazení vyžaduje aktivní běžný účet: %s', async kind => {
+    if (kind === 'anonymous') {
+      await db.exec('reset role');
+      await db.query('update auth.users set is_anonymous = true where id = $1', [worker]);
+    }
+    await identity(kind === 'anon' ? null : kind === 'inactive' ? inactive : worker, kind === 'anon' ? 'anon' : 'authenticated');
+    await expect(db.query('select * from public.mark_order_viewed($1)', [orderId])).rejects.toMatchObject({ code: '42501' });
+  });
+  it('klient nemůže podvrhnout cizí zobrazení ani smazat evidenci', async () => {
+    await expect(db.query('insert into public.order_views(order_id, user_id) values ($1, $2)', [orderId, worker])).rejects.toMatchObject({ code: '42501' });
+  });
+  it('klient nemůže mazat evidenci zobrazení', async () => {
+    await expect(db.query('delete from public.order_views')).rejects.toMatchObject({ code: '42501' });
+  });
+  it('deaktivovaný účet nečte evidenci zobrazení', async () => {
+    await db.query('select * from public.mark_order_viewed($1)', [orderId]);
+    await identity(inactive);
+    expect((await db.query('select * from public.order_views')).rows).toHaveLength(0);
+  });
+  it('nelze zobrazit neexistující zakázku', async () => {
+    await expect(db.query('select * from public.mark_order_viewed($1)', [worker])).rejects.toMatchObject({ code: 'P0002' });
+  });
 
   it('admin může vytvářet, upravovat a mazat', async () => {
     await db.query("update public.orders set customer = 'Nový zákazník' where id = $1", [orderId]);
